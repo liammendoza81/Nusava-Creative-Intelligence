@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Nusava Creator Intelligence Platform — Multi-agency TikTok Shop affiliate performance dashboard">
+  <title>Nusava · Creator Intelligence Platform</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Favicon inline SVG -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230284c7'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='18' font-weight='800' fill='white'>N</text></svg>">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Site Header ── -->
+  <header id="site-header">
+    <!-- Built by app.js: buildHeader() -->
+  </header>
+
+  <!-- ── Agency Navigation Bar ── -->
+  <nav id="agency-nav" role="navigation" aria-label="Agency navigation">
+    <!-- Built by app.js: buildNav() -->
+  </nav>
+
+  <!-- ── Time Filter Bar ── -->
+  <div id="time-filter" role="toolbar" aria-label="Time range selector">
+    <!-- Built by app.js: buildTimeFilter() -->
+  </div>
+
+  <!-- ── Main Content Area ── -->
+  <main id="main-content" role="main">
+    <!-- Rendered by Views.executive.render() or Views.agency.render(agencyId) -->
+    <div class="empty-state">
+      <div class="empty-state-icon">⏳</div>
+      <h3>Loading platform...</h3>
+      <p>Initializing charts and data.</p>
+    </div>
+  </main>
+
+</div><!-- #app -->
+
+<!-- ════════════════════════════════════════════════════
+     Script Load Order — CRITICAL: do not reorder
+     All files use window.* globals, no ES modules.
+     ════════════════════════════════════════════════════ -->
+
+<!-- 1. Chart.js (must load before any chart code) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- 2. Platform configuration -->
+<script src="js/config.js"></script>
+
+<!-- 3. Utility functions (depends on config.js) -->
+<script src="js/utils.js"></script>
+
+<!-- 4. Chart helpers (depends on config.js + utils.js) -->
+<script src="js/charts.js"></script>
+
+<!-- 5. Agency data files (independent, loaded before views) -->
+<script src="data/creatify.js"></script>
+<script src="data/thc.js"></script>
+<script src="data/elle-media.js"></script>
+<script src="data/internal-retainers.js"></script>
+
+<!-- 6. View modules (depend on all of the above) -->
+<script src="js/views/executive.js"></script>
+<script src="js/views/agency.js"></script>
+<script src="js/views/evaluation.js"></script>
+<script src="js/views/affiliates.js"></script>
+<script src="js/views/search.js"></script>
+<script src="js/views/narrative.js"></script>
+<script src="js/views/alerts.js"></script>
+<script src="js/views/gmvlag.js"></script>
+<script src="js/views/incremental.js"></script>
+
+<!-- 7. App controller (must be last — calls Views.* on init) -->
+<script src="js/app.js"></script>
+
+</body>
+</html>
