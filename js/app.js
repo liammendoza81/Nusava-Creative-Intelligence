@@ -112,8 +112,9 @@
     // Separator
     html += '<div style="flex:1"></div>';
 
-    // TikTok Performance is one entry; sub-tabs live inside the view
+    // TikTok views — Performance (creator/video analytics) + Forecasting (GMV/inventory/profit)
     html += '<button class="nav-tab" data-view="weekly">TikTok Performance</button>';
+    html += '<button class="nav-tab" data-view="tiktok">TikTok Forecasting</button>';
     html += '<button class="nav-tab" data-view="search">Search</button>';
     html += '<button class="nav-tab" data-view="affiliates">Affiliates</button>';
     html += '<button class="nav-tab" data-view="narrative">Narratives</button>';
@@ -224,6 +225,8 @@
       Views.executive.render();
     } else if (state.view === 'weekly') {
       Views.weekly.render();
+    } else if (state.view === 'tiktok') {
+      Views.tiktok.render();
     } else if (state.view === 'agency_insights') {
       Views.agency_insights.render();
     } else if (state.view === 'affiliates') {
