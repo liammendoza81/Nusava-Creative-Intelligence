@@ -13,9 +13,9 @@ window.DATA_CREATIFY = {
     { label: 'M5', period: '22 Oct–21 Nov', fees: 33000, sampleCosts: null, targetVids: 900,  delivered: 964,  views: 6523841,  creators: 30, performing: 13, gmv: 133459.45 },
     { label: 'M6', period: '23 Nov–18 Jan', fees: 60000, sampleCosts: null, targetVids: 1800, delivered: 2515, views: 22641963, creators: 60, performing: 21, gmv: 382541.01, alerts: ['one-time-spike'] },
     { label: 'M7', period: '9 Jan–15 Feb',  fees: 33000, sampleCosts: null, targetVids: 900,  delivered: 1083, views: 15567243, creators: 30, performing: 16, gmv: 167428.65 },
-    { label: 'M8', period: 'Feb 16–Mar 22', fees: 54600, sampleCosts: null, targetVids: 1560, delivered: null, views: null, creators: 52, performing: 27, gmv: 108606.8, alerts: ["partial-coverage-m8-feb16-mar1"] },
-    { label: 'M9', period: 'Mar 23–Apr 26', fees: 51450, sampleCosts: null, targetVids: 1470, delivered: null, views: null, creators: 49, performing: 28, gmv: 88422.69 },
-    { label: 'M10', period: 'Apr 27–May 31', fees: 53550, sampleCosts: null, targetVids: 1530, delivered: null, views: null, creators: 51, performing: 0, gmv: 0, alerts: ["in-progress-no-perf-data"] }
+    { label: 'M8', period: 'Feb 16–Mar 22', fees: 47250, sampleCosts: null, targetVids: 1350, delivered: null, views: null, creators: 45, performing: 27, gmv: 108606.8, alerts: ["partial-coverage-m8-feb16-mar1"] },
+    { label: 'M9', period: 'Mar 23–Apr 26', fees: 47250, sampleCosts: null, targetVids: 1350, delivered: null, views: null, creators: 45, performing: 28, gmv: 88422.69 },
+    { label: 'M10', period: 'Apr 27–May 31', fees: 47250, sampleCosts: null, targetVids: 1350, delivered: null, views: null, creators: 45, performing: 0, gmv: 0, alerts: ["in-progress-no-perf-data"] }
   ],
 
   topCreatorsByMonth: {
