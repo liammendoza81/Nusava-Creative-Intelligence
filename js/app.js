@@ -106,13 +106,18 @@
         '</button>';
     });
 
-    // Separator + platform-wide tools
+    // Aggregated agency insights — sits with the per-agency tabs
+    html += '<button class="nav-tab" data-view="agency_insights">Agency Insights</button>';
+
+    // Separator
     html += '<div style="flex:1"></div>';
-    html += '<button class="nav-tab" data-view="weekly">📊 Weekly TikTok</button>';
-    html += '<button class="nav-tab" data-view="search">🔍 Search</button>';
-    html += '<button class="nav-tab" data-view="affiliates">🤝 Affiliates</button>';
-    html += '<button class="nav-tab" data-view="narrative">💡 Narratives</button>';
-    html += '<button class="nav-tab" data-view="alerts">🔔 Alerts</button>';
+
+    // TikTok Performance is one entry; sub-tabs live inside the view
+    html += '<button class="nav-tab" data-view="weekly">TikTok Performance</button>';
+    html += '<button class="nav-tab" data-view="search">Search</button>';
+    html += '<button class="nav-tab" data-view="affiliates">Affiliates</button>';
+    html += '<button class="nav-tab" data-view="narrative">Narratives</button>';
+    html += '<button class="nav-tab" data-view="alerts">Alerts</button>';
 
     nav.innerHTML = html;
 
@@ -219,6 +224,8 @@
       Views.executive.render();
     } else if (state.view === 'weekly') {
       Views.weekly.render();
+    } else if (state.view === 'agency_insights') {
+      Views.agency_insights.render();
     } else if (state.view === 'affiliates') {
       Views.affiliates.render();
     } else if (state.view === 'search') {

@@ -976,3 +976,135 @@ body {
 .text-muted { color: var(--gray-500); }
 .font-bold { font-weight: 700; }
 .w-full { width: 100%; }
+
+/* =========================================================
+   TikTok deep-dive views — additional styles
+   These augment the platform's base styles for the TikTok
+   sub-tabs. Token names mirror the platform's CSS variables.
+   ========================================================= */
+
+/* Tables (used by SKU Breakdown, Forecast, Profitability, Action Plan) */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: 8px; background: var(--white); }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.tbl th, table.tbl td {
+  padding: 8px 10px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid var(--gray-200);
+}
+table.tbl th {
+  background: var(--gray-50); font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .03em; color: var(--gray-500);
+  position: sticky; top: 0;
+}
+table.tbl th.left, table.tbl td.left { text-align: left; }
+table.tbl th.center, table.tbl td.center { text-align: center; }
+table.tbl tr:last-child td { border-bottom: none; }
+table.tbl tr.subtotal td { background: var(--gray-50); font-weight: 600; }
+table.tbl tr.grand-total td { background: #e0f2fe; font-weight: 700; color: #0369a1; }
+table.tbl tr.muted td { color: var(--gray-400); }
+table.tbl tr.divider td { border-top: 2px solid var(--gray-200); padding: 4px 10px; }
+.numeric-cell { font-variant-numeric: tabular-nums; }
+
+table.tbl thead.two-row tr.group th {
+  background: var(--gray-200); border-right: 1px solid var(--gray-300);
+  text-align: center; font-size: 11px;
+}
+
+/* WoW% color tags */
+.wow-pos { color: var(--green); }
+.wow-neg { color: var(--red); }
+.wow-flat { color: var(--gray-500); }
+
+/* Cells with subtle background for emphasis */
+.cell-warn-bg { background: #fef3c7; }
+.cell-success-bg { background: #dcfce7; }
+.cell-danger-bg { background: #fee2e2; }
+
+/* Card layout for TikTok views */
+.card {
+  background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px;
+}
+.card-header {
+  display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;
+}
+.card-title { font-size: 15px; font-weight: 600; margin: 0; color: var(--gray-900); }
+.card-sub { color: var(--gray-500); font-size: 12px; margin: 0; }
+
+/* Stat grid (KPI strip used by some TikTok views) */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.stat {
+  background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-500); }
+.stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--gray-900); }
+.stat-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+
+/* Section headings */
+.section-title { margin: 0 0 4px; font-size: 22px; font-weight: 600; color: var(--gray-900); }
+.section-sub { color: var(--gray-500); margin: 0 0 20px; font-size: 13px; }
+
+/* Severity badges */
+.sev {
+  display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+}
+.sev-high   { background: #fee2e2; color: var(--red); }
+.sev-medium { background: #fef3c7; color: var(--yellow); }
+.sev-low    { background: #e0e7ff; color: var(--purple); }
+
+.scenario-status {
+  display: inline-block; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px;
+}
+.status-ahead { background: #dcfce7; color: var(--green); }
+.status-track { background: #e0e7ff; color: var(--purple); }
+.status-risk  { background: #fef3c7; color: var(--yellow); }
+.status-off   { background: #fee2e2; color: var(--red); }
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--blue); background: #e0f2fe;
+  padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;
+}
+.callout.warn { border-color: var(--yellow); background: #fef3c7; }
+.callout.danger { border-color: var(--red); background: #fee2e2; }
+.callout p { margin: 0; }
+
+/* Charts */
+.chart-wrap { position: relative; height: 320px; }
+.chart-wrap.tall { height: 400px; }
+
+/* Two-column layout */
+.row-2col { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .row-2col { grid-template-columns: 1fr; } }
+
+/* Insight section cards (used by tiktok_insights view) */
+.insight-section {
+  background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius);
+  padding: 20px 24px; margin-bottom: 16px;
+}
+.insight-section h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #0369a1; }
+.insight-section p, .insight-section li { line-height: 1.55; }
+.insight-section ol, .insight-section ul { margin: 8px 0 0; padding-left: 22px; }
+.insight-section.warn { border-left: 4px solid var(--yellow); }
+
+/* Risk row layout in insights */
+.risk-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start;
+  padding: 10px 0; border-bottom: 1px solid var(--gray-200);
+}
+.risk-row:last-child { border-bottom: none; }
+.risk-text strong { font-weight: 600; }
+.risk-action { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+
+/* Forecast scenario toggle buttons */
+.scenario-btn {
+  background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-500);
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.scenario-btn:hover { border-color: var(--blue); color: var(--blue); }
+.scenario-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
