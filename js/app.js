@@ -108,6 +108,7 @@
 
     // Separator + platform-wide tools
     html += '<div style="flex:1"></div>';
+    html += '<button class="nav-tab" data-view="weekly">📊 Weekly TikTok</button>';
     html += '<button class="nav-tab" data-view="search">🔍 Search</button>';
     html += '<button class="nav-tab" data-view="affiliates">🤝 Affiliates</button>';
     html += '<button class="nav-tab" data-view="narrative">💡 Narratives</button>';
@@ -203,14 +204,21 @@
     // Kill all chart instances before re-render
     Object.keys(Charts.instances).forEach(function (id) { Charts.kill(id); });
 
-    // Handle non-monthly time views with placeholder
-    if (state.timeRange === 'daily' || state.timeRange === 'weekly') {
+    // Weekly time-range routes to the new TikTok weekly view
+    if (state.timeRange === 'weekly') {
+      Views.weekly.render();
+      return;
+    }
+    // Daily still surfaces the placeholder (no daily data yet)
+    if (state.timeRange === 'daily') {
       renderTimePlaceholder(state.timeRange);
       return;
     }
 
     if (state.view === 'executive') {
       Views.executive.render();
+    } else if (state.view === 'weekly') {
+      Views.weekly.render();
     } else if (state.view === 'affiliates') {
       Views.affiliates.render();
     } else if (state.view === 'search') {
