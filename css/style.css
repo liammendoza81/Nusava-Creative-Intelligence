@@ -430,6 +430,62 @@ h1, h2, h3, h4, h5,
 .ap-bar-value.ap-bar-pos { color: var(--brand-green); }
 .ap-bar-value.ap-bar-neg { color: var(--brand-crimson); }
 
+/* Top-3 Actions cards on Executive */
+.ap-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.ap-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.ap-action-rank {
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--brand-charcoal);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  line-height: 1;
+}
+
+.ap-action-body { flex: 1; }
+
+.ap-action-title {
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--brand-charcoal);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.ap-action-severity {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.ap-action-why {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-700);
+}
+
 /* Pager — left-aligned, stacked (info on top, buttons below). Brand-toned. */
 .ap-pager {
   display: flex;

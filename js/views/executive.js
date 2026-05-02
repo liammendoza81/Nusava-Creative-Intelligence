@@ -35,6 +35,10 @@ window.Views.executive = {
       'Click any row to drill into Affiliate Performance.</div></div>';
 
     html += buildHeadlineKPIs(agencyData, weekly);
+    html += buildPipelineHealth();
+    html += buildTopActions(agencyData, weekly);
+    html += buildRiskConcentration(weekly);
+    html += build8WeekTrend();
     html += buildAgencyScorecard(agencyData);
     html += buildCreatorSummary(weekly);
     html += buildVideoSummary(weekly);
@@ -53,7 +57,8 @@ window.Views.executive = {
       });
     });
 
-    /* No charts on Executive — all sections are tables/cards. */
+    /* Render the 8-week trend chart after DOM is ready. */
+    setTimeout(function () { draw8WeekChart(); }, 50);
   }
 };
 
@@ -110,40 +115,309 @@ function computeAgencyAggregates() {
   };
 }
 
-/* ── 1. Headline KPI strip ── */
+/* ── 1. Headline KPI strip — with % of target ── */
 function buildHeadlineKPIs(ag, weekly) {
   var t = ag.totals;
+  var T = (CONFIG.targets || {});
   var weeklyWoWDollar = weekly ? weekly.kpis.wow_dollar : null;
   var weeklyWoWPct    = weekly ? weekly.kpis.wow_pct    : null;
   var driverNote = buildWoWDriverNote(weekly);
 
-  // GMV card uses monthly aggregate as headline; weekly delta in subtitle for context.
-  var gmvSub = 'Latest month, all agencies';
+  // Monthly GMV vs target
+  var gmvVsTargetPct = T.monthlyGMV ? Math.round(t.gmv / T.monthlyGMV * 100) : null;
+  var gmvSub = gmvVsTargetPct != null
+    ? gmvVsTargetPct + '% of $' + T.monthlyGMV.toLocaleString() + ' monthly target'
+    : 'Latest month, all agencies';
   if (weekly && weeklyWoWDollar != null) {
     var sign = weeklyWoWDollar >= 0 ? '+' : '−';
-    gmvSub = 'Latest week: ' + sign + '$' + Math.abs(Math.round(weeklyWoWDollar)).toLocaleString() +
+    var wowFragment = 'Latest week: ' + sign + '$' + Math.abs(Math.round(weeklyWoWDollar)).toLocaleString() +
       ' (' + (weeklyWoWPct != null ? (weeklyWoWPct >= 0 ? '+' : '') + weeklyWoWPct.toFixed(2) + '% WoW' : 'WoW —') + ')';
+    gmvSub = (gmvVsTargetPct != null ? gmvVsTargetPct + '% of monthly target · ' : '') + wowFragment;
   }
+  var gmvColor = gmvVsTargetPct == null ? 'green'
+    : gmvVsTargetPct >= 100 ? 'green'
+    : gmvVsTargetPct >= 80 ? 'yellow' : 'red';
 
-  var roasColor = t.roas != null && t.roas >= CONFIG.roi.excellent ? 'green'
-    : (t.roas != null && t.roas >= CONFIG.roi.good ? 'yellow' : 'red');
-  var perfColor = t.perfRate >= CONFIG.perfRate.good ? 'green'
-    : t.perfRate >= CONFIG.perfRate.warn ? 'yellow' : 'red';
+  // ROAS vs target
+  var roasVsTarget = T.blendedROAS && t.roas != null ? Math.round(t.roas / T.blendedROAS * 100) : null;
+  var roasSub = 'GMV ÷ ' + U.fmt$(t.cost) + ' all-in cost · break-even ' + U.fmtX(U.getBreakEven());
+  if (roasVsTarget != null) roasSub = roasVsTarget + '% of ' + U.fmtX(T.blendedROAS) + ' target · ' + roasSub;
+  var roasColor = T.blendedROAS && t.roas != null
+    ? (t.roas >= T.blendedROAS ? 'green' : t.roas >= T.blendedROAS * 0.8 ? 'yellow' : 'red')
+    : (t.roas != null && t.roas >= CONFIG.roi.excellent ? 'green' : (t.roas != null && t.roas >= CONFIG.roi.good ? 'yellow' : 'red'));
+
+  // Performing rate vs target
+  var perfVsTarget = T.performingRate ? Math.round(t.perfRate / T.performingRate * 100) : null;
+  var perfSub = U.fmtPct(t.perfRate) + ' performing rate';
+  if (perfVsTarget != null) perfSub = perfVsTarget + '% of ' + U.fmtPct(T.performingRate) + ' target · ' + perfSub;
+  var perfColor = T.performingRate
+    ? (t.perfRate >= T.performingRate ? 'green' : t.perfRate >= T.performingRate * 0.8 ? 'yellow' : 'red')
+    : (t.perfRate >= CONFIG.perfRate.good ? 'green' : t.perfRate >= CONFIG.perfRate.warn ? 'yellow' : 'red');
+
   var driverColor = driverNote.dir === 'pos' ? 'green'
     : driverNote.dir === 'neg' ? 'red' : 'gray';
 
   return '<div class="kpi-grid">' +
-    kpiCard('Total GMV',        U.fmt$(t.gmv),                   gmvSub, 'green') +
-    kpiCard('Blended ROAS',     U.fmtX(t.roas),                  'GMV ÷ ' + U.fmt$(t.cost) + ' all-in cost · break-even ' + U.fmtX(U.getBreakEven()), roasColor) +
+    kpiCard('Total GMV',        U.fmt$(t.gmv),                   gmvSub, gmvColor) +
+    kpiCard('Blended ROAS',     U.fmtX(t.roas),                  roasSub, roasColor) +
     kpiCard('Performing Creators',
             t.performing + ' / ' + t.creators,
-            U.fmtPct(t.perfRate) + ' performing rate', perfColor) +
+            perfSub, perfColor) +
     kpiCard('WoW Driver',
             driverNote.headline,
             driverNote.detail,
             driverColor) +
   '</div>';
 }
+
+/* ── Pipeline Health (manual entry — leading indicators) ── */
+function buildPipelineHealth() {
+  var p = (CONFIG.pipelineHealth || {});
+  var stale = p.lastUpdated ? '' : '<span style="color:var(--brand-amber);font-size:11px;font-weight:600;margin-left:8px">Update before meeting →</span>';
+  var sub = p.lastUpdated ? 'Updated ' + p.lastUpdated : 'Edit values in <code>js/config.js</code> → <code>pipelineHealth</code>';
+  return '<div class="section-header" style="margin-top:32px">' +
+    '<span class="section-title">Pipeline Health</span>' +
+    '<span class="section-meta">Leading indicators · manual entry' + stale + '</span></div>' +
+    '<div class="kpi-grid">' +
+      kpiCard('Briefs Sent', (p.briefsSent || 0).toLocaleString(), 'This week · drives next 2 weeks of new content', p.briefsSent > 0 ? 'green' : 'gray') +
+      kpiCard('Samples Shipped', (p.samplesShipped || 0).toLocaleString(), 'This week · activations 7–14 days out', p.samplesShipped > 0 ? 'green' : 'gray') +
+      kpiCard('Creators Onboarding', (p.creatorsOnboarding || 0).toLocaleString(), 'Signed, not yet posting', p.creatorsOnboarding > 0 ? 'green' : 'gray') +
+      kpiCard('Creators in Outreach', (p.creatorsInOutreach || 0).toLocaleString(), 'Prospecting pipeline', p.creatorsInOutreach > 0 ? 'green' : 'gray') +
+    '</div>' +
+    '<div class="info-notice" style="margin-top:-8px;font-size:11px">' + sub + '</div>';
+}
+
+/* ── Top 3 Actions This Week (heuristic-derived) ── */
+function buildTopActions(ag, weekly) {
+  if (!weekly || !weekly.kpis) return '';
+  var actions = [];
+  var T = CONFIG.targets || {};
+
+  // Heuristic 1: ROAS below break-even or below target
+  if (ag.totals.roas != null && ag.totals.roas < U.getBreakEven()) {
+    actions.push({
+      severity: 'high',
+      action: 'Review agency ROAS portfolio',
+      why: 'Blended ROAS ' + U.fmtX(ag.totals.roas) + ' is below break-even (' + U.fmtX(U.getBreakEven()) + '). At current GM, the agency program is destroying contribution margin.'
+    });
+  } else if (T.blendedROAS && ag.totals.roas < T.blendedROAS) {
+    actions.push({
+      severity: 'medium',
+      action: 'Lift blended ROAS toward target',
+      why: 'Blended ROAS ' + U.fmtX(ag.totals.roas) + ' is below target ' + U.fmtX(T.blendedROAS) + '. Investigate fee structure on the lowest-ROAS agency.'
+    });
+  }
+
+  // Heuristic 2: Top-5 concentration too high
+  if (weekly.kpis.top5_creator_share >= 60) {
+    actions.push({
+      severity: 'high',
+      action: 'Diversify creator roster',
+      why: 'Top-5 creator concentration is ' + weekly.kpis.top5_creator_share.toFixed(2) + '% — single point of failure. Brief 5 new creators outside the current top set.'
+    });
+  }
+
+  // Heuristic 3: Legacy share too high
+  if (weekly.kpis.legacy_pct >= 80) {
+    actions.push({
+      severity: 'high',
+      action: 'Push new content',
+      why: 'Legacy GMV share is ' + weekly.kpis.legacy_pct.toFixed(2) + '%. Pipeline is decaying — fresh content isn\'t replacing aging winners fast enough.'
+    });
+  }
+
+  // Heuristic 4: Lost creators this week
+  var lostCreators = (weekly.creators || []).filter(function (c) {
+    return (c.gmv || 0) === 0 && (c.prior_gmv || 0) > 0;
+  });
+  if (lostCreators.length >= 5) {
+    var topLost = lostCreators.slice().sort(function (a, b) { return (b.prior_gmv || 0) - (a.prior_gmv || 0); }).slice(0, 3);
+    actions.push({
+      severity: 'medium',
+      action: 'Re-engage silent creators',
+      why: lostCreators.length + ' creators went silent this week (' + topLost.map(function (c) { return '@' + c.creator + ' ($' + Math.round(c.prior_gmv || 0).toLocaleString() + ')'; }).join(', ') + (lostCreators.length > 3 ? ' +' + (lostCreators.length - 3) : '') + '). Outreach this week.'
+    });
+  }
+
+  // Heuristic 5: New winners pipeline thin
+  if (T.weeklyNewWinners && weekly.kpis.new_selling_videos < T.weeklyNewWinners * 0.5) {
+    actions.push({
+      severity: 'medium',
+      action: 'Expand new content pipeline',
+      why: 'Only ' + weekly.kpis.new_selling_videos + ' new winners (≤14d) this week vs. target ' + T.weeklyNewWinners + '. Increase brief volume and sample shipments.'
+    });
+  }
+
+  // Heuristic 6: GMV behind monthly target
+  if (T.monthlyGMV && ag.totals.gmv < T.monthlyGMV * 0.8) {
+    var pct = Math.round(ag.totals.gmv / T.monthlyGMV * 100);
+    actions.push({
+      severity: 'high',
+      action: 'Address GMV pacing gap',
+      why: 'Monthly GMV at ' + pct + '% of target. Run a tactical push (creator boost, ad spend lift, or flash promo) to close the gap.'
+    });
+  }
+
+  if (!actions.length) {
+    actions.push({
+      severity: 'low',
+      action: 'Maintain current execution',
+      why: 'No headline triggers fired this week. Use the meeting to discuss medium-term moves: roster expansion, narrative tests, SKU mix.'
+    });
+  }
+
+  // Sort: high severity first, take top 3
+  var rank = { high: 0, medium: 1, low: 2 };
+  actions.sort(function (a, b) { return rank[a.severity] - rank[b.severity]; });
+  actions = actions.slice(0, 3);
+
+  var html = '<div class="section-header" style="margin-top:32px">' +
+    '<span class="section-title">Top 3 Actions This Week</span>' +
+    '<span class="section-meta">Auto-generated from this week\'s metrics — review before the meeting</span></div>' +
+    '<div class="ap-actions">';
+  actions.forEach(function (a, i) {
+    var sevColor = a.severity === 'high' ? 'var(--brand-crimson)' : a.severity === 'medium' ? 'var(--brand-amber)' : 'var(--brand-gray)';
+    var sevBg = a.severity === 'high' ? '#fef2f2' : a.severity === 'medium' ? '#FFFBEB' : 'var(--bg)';
+    html += '<div class="ap-action-card" style="background:' + sevBg + ';border-left:4px solid ' + sevColor + '">' +
+      '<div class="ap-action-rank">' + (i + 1) + '</div>' +
+      '<div class="ap-action-body">' +
+        '<div class="ap-action-title">' + escapeHtml(a.action) +
+          '<span class="ap-action-severity" style="color:' + sevColor + '">' + a.severity + '</span></div>' +
+        '<div class="ap-action-why">' + a.why + '</div>' +
+      '</div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ── Risk Concentration ── */
+function buildRiskConcentration(weekly) {
+  if (!weekly || !weekly.creators) return '';
+
+  // Top creator $ exposure
+  var topCreator = weekly.creators.slice().sort(function (a, b) { return (b.gmv || 0) - (a.gmv || 0); })[0];
+  var totalCreatorGMV = weekly.creators.reduce(function (s, c) { return s + (c.gmv || 0); }, 0);
+  var topShare = (topCreator && totalCreatorGMV > 0) ? (topCreator.gmv / totalCreatorGMV * 100) : 0;
+
+  // Top SKU $ exposure (cumulative — from sku-videos.js)
+  var skuRisk = '—';
+  var skuRiskSub = 'SKU data not loaded';
+  var skuRiskColor = 'gray';
+  if (window.SKU_VIDEOS && window.SKU_VIDEOS.length) {
+    var topSku = window.SKU_VIDEOS.slice().sort(function (a, b) { return (b.gmv_total || 0) - (a.gmv_total || 0); })[0];
+    var totalSkuGMV = window.SKU_VIDEOS.reduce(function (s, r) { return s + (r.gmv_total || 0); }, 0);
+    var skuShare = totalSkuGMV > 0 ? (topSku.gmv_total / totalSkuGMV * 100) : 0;
+    skuRisk = skuShare.toFixed(2) + '%';
+    skuRiskSub = topSku.sku + ' · $' + Math.round(topSku.gmv_total).toLocaleString() + ' cumulative';
+    skuRiskColor = skuShare >= 70 ? 'red' : skuShare >= 50 ? 'yellow' : 'green';
+  }
+
+  // Agency dependency
+  var rollup = weekly.agencyRollup || [];
+  var topAgency = rollup.slice().sort(function (a, b) { return (b.gmv || 0) - (a.gmv || 0); })[0];
+  var totalAgencyGMV = rollup.reduce(function (s, r) { return s + (r.gmv || 0); }, 0);
+  var agencyShare = (topAgency && totalAgencyGMV > 0) ? (topAgency.gmv / totalAgencyGMV * 100) : 0;
+  var agencyShareColor = agencyShare >= 70 ? 'red' : agencyShare >= 50 ? 'yellow' : 'green';
+
+  return '<div class="section-header" style="margin-top:32px">' +
+    '<span class="section-title">Risk Concentration</span>' +
+    '<span class="section-meta">Single-point-of-failure exposure — diversify when shares get high</span></div>' +
+    '<div class="kpi-grid">' +
+      kpiCard('Top-1 Creator Dependency',
+        topShare.toFixed(2) + '%',
+        topCreator ? '@' + topCreator.creator + ' · $' + Math.round(topCreator.gmv).toLocaleString() + ' this week' : '—',
+        topShare >= 20 ? 'red' : topShare >= 12 ? 'yellow' : 'green') +
+      kpiCard('Top-1 SKU Dependency',
+        skuRisk,
+        skuRiskSub,
+        skuRiskColor) +
+      kpiCard('Top-1 Source Dependency',
+        agencyShare.toFixed(2) + '%',
+        topAgency ? AGENCY_LABEL_FOR(topAgency.Agency) + ' · $' + Math.round(topAgency.gmv).toLocaleString() + ' this week' : '—',
+        agencyShareColor) +
+      kpiCard('Top-5 Creator Concentration',
+        weekly.kpis.top5_creator_share.toFixed(2) + '%',
+        'GMV from top 5 creators',
+        weekly.kpis.top5_creator_share >= 60 ? 'red' : weekly.kpis.top5_creator_share >= 45 ? 'yellow' : 'green') +
+    '</div>';
+}
+
+/* ── 8-week trend chart (uses DASHBOARD_DATA.weekly_summary) ── */
+function build8WeekTrend() {
+  var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
+  if (!ws || !ws.rows) return '';
+  return '<div class="section-header" style="margin-top:32px">' +
+    '<span class="section-title">8-Week GMV Trend</span>' +
+    '<span class="section-meta">Trailing 8 weekly periods · 4-week rolling average overlaid</span></div>' +
+    '<div class="chart-card"><div class="chart-wrap" style="height:280px"><canvas id="exec-8wk-chart"></canvas></div></div>';
+}
+
+function draw8WeekChart() {
+  var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
+  if (!ws || !ws.rows) return;
+  var canvas = document.getElementById('exec-8wk-chart');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  var labels = ws.rows.map(function (r) { return r.week; });
+  var gmv = ws.rows.map(function (r) { return r.total_gmv; });
+  // 4-week rolling average
+  var rolling = gmv.map(function (_, i) {
+    var slice = gmv.slice(Math.max(0, i - 3), i + 1);
+    return slice.reduce(function (s, v) { return s + v; }, 0) / slice.length;
+  });
+
+  var T = (CONFIG.targets || {}).weeklyGMV;
+
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Weekly GMV',
+          data: gmv,
+          borderColor: '#4C9C2E',
+          backgroundColor: 'rgba(76,156,46,0.10)',
+          fill: true,
+          tension: 0.25,
+          pointRadius: 4,
+          pointBackgroundColor: '#4C9C2E',
+          borderWidth: 2
+        },
+        {
+          label: '4-week rolling avg',
+          data: rolling,
+          borderColor: '#10593B',
+          borderDash: [6, 4],
+          tension: 0.25,
+          pointRadius: 0,
+          fill: false,
+          borderWidth: 2
+        },
+        T ? {
+          label: 'Weekly target',
+          data: labels.map(function () { return T; }),
+          borderColor: '#8C9091',
+          borderDash: [2, 4],
+          pointRadius: 0,
+          fill: false,
+          borderWidth: 1.5
+        } : null
+      ].filter(Boolean)
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: function (v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } }
+      }
+    }
+  });
+}
+
+/* Channel economics deliberately omitted from this dashboard. CM stack,
+   subscription mix, and weekly P&L will live in the separate TikTok
+   performance dashboard alongside Forecasting. */
 
 function buildWoWDriverNote(weekly) {
   if (!weekly || !weekly.kpis || weekly.kpis.wow_dollar == null) {

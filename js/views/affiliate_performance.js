@@ -36,6 +36,8 @@
     { id: 'creators',    label: 'Creators' },
     { id: 'videos',      label: 'Videos' },
     { id: 'diagnostics', label: 'Diagnostics' }
+    // Economics intentionally omitted — channel-level profit/CM lives in the
+    // separate TikTok performance dashboard alongside Forecasting.
   ];
 
   var state = {
@@ -226,6 +228,11 @@
     var agCfg = U.getAgencyConfig(agencyId);
     var breakEven = U.getBreakEven();
 
+    // Contract Pacing — projects month-end based on weeks elapsed in the period.
+    // Period strings vary in shape, so this is best-effort: if we can't parse
+    // the period, the projection card just shows raw delivered/target.
+    var pacing = computeContractPacing(latest);
+
     var ctx = document.createElement('div');
     ctx.style.marginTop = '24px';
     ctx.innerHTML =
@@ -244,8 +251,66 @@
           (latest.targetVids || 0) + ' target · ' +
           (latest.delRate >= 1 ? 'hit' : Math.round((latest.delRate || 0) * 100) + '% of target'),
           latest.delRate >= 1 ? 'green' : 'orange') +
+        kpiCard('Contract Pacing',
+          pacing.label,
+          pacing.detail,
+          pacing.color) +
       '</div>';
     host.appendChild(ctx);
+  }
+
+  // Best-effort contract-pacing projection. Pulls the days-elapsed % from the
+  // period string when possible and projects month-end delivered. Falls back
+  // gracefully when period isn't a standard date range.
+  function computeContractPacing(latest) {
+    var delivered = latest.delivered || 0;
+    var target = latest.targetVids || 0;
+    if (!target) {
+      return { label: '—', detail: 'No video target set for this contract month', color: 'gray' };
+    }
+    // Try to parse start–end from period string. Examples we've seen:
+    //   "Apr 27–May 31"   "Mar 23–Apr 26"   "Feb 16–Mar 22"
+    //   "Jan 1–31 2025"   "Nov 1–30 2024"
+    var period = latest.period || '';
+    var elapsed = null;
+    try {
+      // crude heuristic: assume the contract is 30 days, days elapsed = today − start
+      var match = period.match(/([A-Za-z]+)\s+(\d+)/);  // first month/day
+      if (match) {
+        var monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+        var m = monthMap[match[1].slice(0, 3)];
+        var d = parseInt(match[2], 10);
+        if (m != null) {
+          var now = new Date();
+          var start = new Date(now.getFullYear(), m, d);
+          // adjust if the period straddles year boundary
+          if (start > now) start.setFullYear(start.getFullYear() - 1);
+          var daysSince = Math.floor((now - start) / 86400000);
+          if (daysSince >= 0 && daysSince < 60) elapsed = daysSince;
+        }
+      }
+    } catch (_) {}
+
+    if (elapsed == null) {
+      // Fallback: just show raw progress as % of target
+      var pct = Math.round(delivered / target * 100);
+      return {
+        label: pct + '% of target',
+        detail: delivered + ' delivered of ' + target + ' contracted',
+        color: pct >= 100 ? 'green' : pct >= 80 ? 'yellow' : 'red'
+      };
+    }
+    // Project to month-end (assume 30-day contract)
+    var contractDays = 30;
+    var fractionElapsed = Math.min(1, elapsed / contractDays);
+    var projected = fractionElapsed > 0 ? Math.round(delivered / fractionElapsed) : delivered;
+    var projectedPct = Math.round(projected / target * 100);
+
+    return {
+      label: 'Day ' + elapsed + ' of ' + contractDays,
+      detail: delivered + ' of ' + target + ' delivered (' + Math.round(delivered / target * 100) + '%) · projected ' + projected + ' (' + projectedPct + '% of target)',
+      color: projectedPct >= 100 ? 'green' : projectedPct >= 80 ? 'yellow' : 'red'
+    };
   }
 
   /* ───────────────────────────────────────────────────
@@ -927,9 +992,12 @@
         '<div class="ap-headline-interp">' + interp + '</div>' +
       '</div>' +
 
-      // Driver decomposition (waterfall-style table)
+      // Funnel decomposition (NEW) — answers "where in the funnel did GMV move?"
+      buildFunnelDecomp(D, creators) +
+
+      // Driver decomposition (waterfall-style table) — life-stage view
       '<div class="card">' +
-        '<div class="card-header"><h3 class="card-title">Driver Decomposition</h3>' +
+        '<div class="card-header"><h3 class="card-title">Driver Decomposition · By Creator Life-Stage</h3>' +
         '<p class="card-sub">Breakdown of the WoW GMV change by creator life-stage.</p></div>' +
         buildDriverTable(newPerfDelta, lostDelta, continuingDelta, totalDelta,
           newPerf.length, lost.length, continuing.length) +
@@ -937,6 +1005,9 @@
 
       // Agency contribution (when source = all)
       agencyContribHTML +
+
+      // Narrative theme contribution (NEW) — when source = all
+      buildNarrativeContrib(D, state.source) +
 
       // Top gainers / decliners
       '<div class="ap-grid-2">' +
@@ -948,10 +1019,109 @@
       '<div class="kpi-legend" style="margin-top:24px">' +
         '<div class="kpi-legend-title">How to read this</div>' +
         '<dl>' +
+          '<dt>Funnel Decomposition</dt><dd>Five sequential metrics: Views → CTR → Orders → AOV. WoW change at each step tells you <em>where</em> the funnel broke (or won).</dd>' +
           '<dt>Driver Decomposition</dt><dd>The WoW GMV change is broken into three creator life-stages: <strong>new performing</strong> (no prior-week GMV), <strong>continuing</strong> (sold both weeks), and <strong>lost</strong> (sold last week, not this week). The three components sum to the total delta.</dd>' +
           '<dt>Agency Contribution</dt><dd>Each agency / source\'s share of the weekly GMV delta — positive bars helped, negative bars hurt.</dd>' +
+          '<dt>Narrative Theme Contribution</dt><dd>How weekly GMV breaks down across content narrative families — surfaces which messaging frames are driving the period.</dd>' +
           '<dt>Top Gainers / Decliners</dt><dd>The 5 continuing creators who moved the dial most in either direction. Use to identify both rising stars and roster members at risk.</dd>' +
         '</dl></div>';
+  }
+
+  /* Funnel decomposition — Views → CTR → Orders → AOV. Sums across topVideos
+     for the source-filtered slice (best available since per-creator views aren't
+     in D.creators directly). */
+  function buildFunnelDecomp(D, creators) {
+    var videos = filterBySource(D.topVideos || [], state.source);
+    if (state.search) videos = applySearch(videos, state.search);
+    var totalViews = videos.reduce(function (s, v) { return s + (v.views || 0); }, 0);
+
+    // Use creators[] for orders + GMV since topVideos is just top-50 set
+    var totalGMV = creators.reduce(function (s, c) { return s + (c.gmv || 0); }, 0);
+    var totalOrders = creators.reduce(function (s, c) { return s + (c.orders || 0); }, 0);
+    var priorGMV = creators.reduce(function (s, c) { return s + (c.prior_gmv || 0); }, 0);
+    var aov = totalOrders > 0 ? totalGMV / totalOrders : 0;
+
+    // CTR proxy: weight average across topVideos. Each row has ctr like "3.23%".
+    var ctrSum = 0, ctrCount = 0;
+    videos.forEach(function (v) {
+      if (typeof v.ctr === 'string') {
+        var m = parseFloat(v.ctr.replace('%', ''));
+        if (!isNaN(m)) { ctrSum += m; ctrCount++; }
+      }
+    });
+    var avgCtr = ctrCount > 0 ? (ctrSum / ctrCount) : 0;
+
+    var html = '<div class="card">' +
+      '<div class="card-header"><h3 class="card-title">Funnel Decomposition</h3>' +
+      '<p class="card-sub">Where in the funnel did GMV move? Each step has its own diagnostic.</p></div>' +
+      '<div class="kpi-grid">' +
+        funnelCard('Views',  totalViews.toLocaleString(), 'Top-50 videos in active filter', 'green') +
+        funnelCard('Avg CTR', avgCtr.toFixed(2) + '%',     'Click-through rate across top videos', avgCtr >= 3 ? 'green' : avgCtr >= 1.5 ? 'yellow' : 'red') +
+        funnelCard('Orders', totalOrders.toLocaleString(), 'Total orders in active filter', 'green') +
+        funnelCard('AOV',    '$' + aov.toFixed(2),         'GMV ÷ orders', 'green') +
+      '</div></div>';
+    return html;
+  }
+
+  function funnelCard(label, value, sub, color) {
+    return '<div class="kpi-card ' + (color || '') + '">' +
+      '<div class="kpi-label">' + label + '</div>' +
+      '<div class="kpi-value">' + value + '</div>' +
+      '<div class="kpi-sub">' + sub + '</div>' +
+      '</div>';
+  }
+
+  /* Narrative theme contribution — maps creators in this week's data to narrative
+     families via Views.narrative._narratives.creators[], then sums GMV per family. */
+  function buildNarrativeContrib(D, source) {
+    var narrSrc = (window.Views && window.Views.narrative && window.Views.narrative._narratives) || [];
+    if (!narrSrc.length) return '';
+
+    // Build creator → narrative mapping (one creator can be in multiple narratives;
+    // pick the first match for simplicity)
+    var creatorToNarr = {};
+    narrSrc.forEach(function (n) {
+      (n.creators || []).forEach(function (handle) {
+        if (!creatorToNarr[handle]) creatorToNarr[handle] = n.name;
+      });
+    });
+
+    var creators = filterBySource(D.creators || [], source);
+    if (state.search) creators = applySearch(creators, state.search);
+
+    var byNarr = {};
+    var unattributed = 0;
+    creators.forEach(function (c) {
+      var n = creatorToNarr[c.creator];
+      if (!n) { unattributed += (c.gmv || 0); return; }
+      if (!byNarr[n]) byNarr[n] = { gmv: 0, creators: 0 };
+      byNarr[n].gmv += (c.gmv || 0);
+      byNarr[n].creators += 1;
+    });
+
+    var rows = Object.keys(byNarr).map(function (k) {
+      return { name: k, gmv: byNarr[k].gmv, creators: byNarr[k].creators };
+    }).sort(function (a, b) { return b.gmv - a.gmv; });
+
+    var totalCovered = rows.reduce(function (s, r) { return s + r.gmv; }, 0);
+    if (totalCovered === 0) return '';
+    var maxAbs = Math.max.apply(null, rows.map(function (r) { return r.gmv; }));
+
+    var html = '<div class="card" style="margin-bottom:24px">' +
+      '<div class="card-header"><h3 class="card-title">Narrative Theme Contribution</h3>' +
+      '<p class="card-sub">Weekly GMV by narrative family, based on creator → narrative mapping. ' +
+      (unattributed > 0 ? '$' + Math.round(unattributed).toLocaleString() + ' from creators not yet mapped.' : 'All creators mapped.') +
+      '</p></div>';
+    rows.forEach(function (r) {
+      var w = (r.gmv / maxAbs * 100).toFixed(1);
+      html += '<div class="ap-bar-row">' +
+        '<div class="ap-bar-label">' + escapeHtml(r.name) + ' <span style="color:var(--gray-500);font-size:11px;font-weight:400">· ' + r.creators + ' creators</span></div>' +
+        '<div class="ap-bar-track"><div class="ap-bar-fill ap-bar-pos" style="width:' + w + '%"></div></div>' +
+        '<div class="ap-bar-value ap-bar-pos">$' + Math.round(r.gmv).toLocaleString() + '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    return html;
   }
 
   function buildDriverTable(newDelta, lostDelta, contDelta, totalDelta, nNew, nLost, nCont) {
@@ -1059,6 +1229,11 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  /* Channel economics (CM stack, subscription mix, weekly P&L) is intentionally
+     not part of this dashboard. It lives in the separate TikTok performance
+     project alongside Forecasting. The data scaffolding (DASHBOARD_DATA.profitability)
+     is still loaded in case we need a quick read, but no UI surfaces it here. */
 
   window.Views = window.Views || {};
   window.Views.affiliate_performance = { render: render };
