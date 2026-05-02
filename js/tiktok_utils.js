@@ -23,8 +23,9 @@
   }
 
   function fmtPct(v, opts) {
+    // Standardized to 2-decimal cap (was 1). Caller can still override via opts.decimals.
     if (v === null || v === undefined || Number.isNaN(v)) return '—';
-    var decimals = (opts && opts.decimals != null) ? opts.decimals : 1;
+    var decimals = (opts && opts.decimals != null) ? opts.decimals : 2;
     var sign = v > 0 ? '+' : '';
     return sign + (v * 100).toFixed(decimals) + '%';
   }

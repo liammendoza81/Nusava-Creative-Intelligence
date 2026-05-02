@@ -19,8 +19,11 @@ window.U = (function () {
   }
 
   function fmtPct(n) {
+    // 2-decimal cap on every percentage. Input is a fraction (0–1) by default,
+    // but values >1 are treated as already-scaled (e.g. "18.0999" → "18.10%").
     if (n == null || isNaN(n)) return '—';
-    return (n * 100).toFixed(1) + '%';
+    var pct = Math.abs(n) <= 1 ? n * 100 : n;
+    return pct.toFixed(2) + '%';
   }
 
   function fmtX(n) {

@@ -73,19 +73,30 @@
     var grid = u.el('div', { class: 'stat-grid' });
     var counts = {};
     Object.keys(ap.bucket_totals || {}).forEach(function (b) { counts[b] = ap.bucket_totals[b].count; });
-    grid.appendChild(makeStat('Urgent alerts',
+    grid.appendChild(makeStat('Urgent Alerts',
       String(ap.urgent_alerts.length),
       ap.urgent_alerts.length ? 'Act this week' : 'No urgent action'));
-    grid.appendChild(makeStat('SKUs needing PO action',
+    grid.appendChild(makeStat('SKUs Needing PO Action',
       String((counts.PUSH_BACK_PO || 0) + (counts.PULL_FORWARD_PO || 0) + (counts.MARKDOWN || 0)),
       'Push-back + pull-forward + markdown'));
-    grid.appendChild(makeStat('Excess inventory value',
+    grid.appendChild(makeStat('Excess Inventory Value',
       u.fmtCurrency(ap.total_excess_value),
       u.fmtNumber(ap.total_excess_units) + ' units above 90-day target (at COGS)'));
-    grid.appendChild(makeStat('SKUs healthy',
+    grid.appendChild(makeStat('SKUs Healthy',
       String((counts.HOLD || 0)),
-      'In-policy 30-90 DOH band'));
+      'In-policy 30–90 DOH band'));
     root.appendChild(grid);
+
+    // KPI legend
+    var legend = u.el('div', { class: 'kpi-legend' });
+    legend.innerHTML = '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Urgent Alerts</dt><dd>Real-time triggers that require action this week (markdown, push-back PO, urgent reorder).</dd>' +
+        '<dt>SKUs Needing PO Action</dt><dd>Count of SKUs flagged for push-back, pull-forward, or markdown — i.e. requiring a purchase-order or pricing decision.</dd>' +
+        '<dt>Excess Inventory Value</dt><dd>Total units above the 90-day demand target × current COGS. Capital tied up in over-stock.</dd>' +
+        '<dt>SKUs Healthy</dt><dd>Count of SKUs in the on-policy 30–90 days-on-hand band — no action needed.</dd>' +
+      '</dl>';
+    root.appendChild(legend);
 
     // ===== Urgent alerts (full detail, in case user lands here from anchor) =====
     if (ap.urgent_alerts && ap.urgent_alerts.length) {

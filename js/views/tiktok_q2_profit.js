@@ -18,22 +18,32 @@
       + 'under each forecast scenario × ROAS scenario. Bottom-line cash number = CM after retainer. '
       + 'Cells in red show net cash burn for the quarter.'));
 
-    // Anchor numbers strip
+    // Anchor numbers strip — 3 cards. Removed "Weekly retainer (covered)" per
+    // 2026-05 KPI rationalization (it's a denominator, not a headline; pushed to subtitle below).
+    var retainerSub = m.weekly_retainer_excluded > 0
+      ? 'Net of ' + u.fmtCurrency(m.weekly_retainer_total) + '/wk retainers (excludes ' + u.fmtCurrency(m.weekly_retainer_excluded) + '/wk for ' + m.families_excluded_from_retainer.join(', ') + ')'
+      : 'Net of ' + u.fmtCurrency(m.weekly_retainer_total) + '/wk retainers';
+
     var grid = u.el('div', { class: 'stat-grid' });
-    grid.appendChild(makeStat('April actual CM after ads',
+    grid.appendChild(makeStat('April Actual CM After Ads',
       coloredCurrency(m.april_cm_after_ads), 'W5–W8 sum (B12 + D3K2 only)'));
-    grid.appendChild(makeStat('April actual CM after retainer',
-      coloredCurrency(m.april_cm_after_retainer), 'Net of weekly retainers'));
-    grid.appendChild(makeStat('Weekly retainer (covered)',
-      u.fmtCurrency(m.weekly_retainer_total) + '/wk',
-      m.weekly_retainer_excluded > 0
-        ? 'Excludes ' + u.fmtCurrency(m.weekly_retainer_excluded) + '/wk for ' + m.families_excluded_from_retainer.join(', ')
-        : 'B12 + D3K2 retainer load'));
+    grid.appendChild(makeStat('April Actual CM After Retainer',
+      coloredCurrency(m.april_cm_after_retainer), retainerSub));
     grid.appendChild(makeStat(
-      'Recommended (' + m.recommended.scenario + ' × ' + m.recommended.roas + 'x)',
+      'Q2 Forecast CM (' + m.recommended.scenario + ' × ' + m.recommended.roas + 'x)',
       coloredCurrency(m.recommended.q2_cm_after_retainer),
       'Q2 CM after retainer at central case'));
     root.appendChild(grid);
+
+    // KPI legend
+    var legend = u.el('div', { class: 'kpi-legend' });
+    legend.innerHTML = '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>April Actual CM After Ads</dt><dd>Sum of weekly contribution margin after TikTok ad spend for April (W5–W8).</dd>' +
+        '<dt>April Actual CM After Retainer</dt><dd>Sum of weekly CM after ads minus the weekly retainer load. Bottom-line cash for April.</dd>' +
+        '<dt>Q2 Forecast CM</dt><dd>Q2 contribution margin under the central forecast scenario × ROAS scenario, after retainers. See matrix below for full sensitivity.</dd>' +
+      '</dl>';
+    root.appendChild(legend);
 
     // The two matrices
     var afterAdsCard = u.el('div', { class: 'card' });

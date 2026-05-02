@@ -16,16 +16,27 @@
       + (meta.is_partial_week ? '⚠ Latest week is a ' + meta.days_in_week + '-day window — WoW comparisons partly reflect day-count.' : '')
     ));
 
-    // KPI strip — last week's headline numbers
+    // KPI strip — 5 cards (was 7). Dropped Units (~1:1 with Orders at SKU mix
+    // level) and DSR (push to trend chart axis below). Title Case.
     var statGrid = u.el('div', { class: 'stat-grid' });
-    statGrid.appendChild(makeStat('Total GMV', u.fmtCurrency(lastRow.total_gmv), wowSub(lastRow.total_gmv_wow)));
-    statGrid.appendChild(makeStat('Ad Spend',  u.fmtCurrency(lastRow.ad_spend),  wowSub(lastRow.ad_spend_wow, true)));
-    statGrid.appendChild(makeStat('ROI',       u.fmtMultiplier(lastRow.roi),     '8-wk avg ' + u.fmtMultiplier(ws.totals.avg_weekly_roi)));
-    statGrid.appendChild(makeStat('CPO',       u.fmtCurrency(lastRow.cpo, { decimals: 2 }), wowSub(lastRow.cpo_wow, true)));
-    statGrid.appendChild(makeStat('Orders',    u.fmtNumber(lastRow.total_orders), wowSub(lastRow.total_orders_wow)));
-    statGrid.appendChild(makeStat('Units',     u.fmtNumber(lastRow.units_sold),   wowSub(lastRow.units_sold_wow)));
-    statGrid.appendChild(makeStat('DSR',       u.fmtNumber(lastRow.dsr, { decimals: 1 }) + ' u/d', wowSub(lastRow.dsr_wow)));
+    statGrid.appendChild(makeStat('Total Weekly GMV', u.fmtCurrency(lastRow.total_gmv), wowSub(lastRow.total_gmv_wow)));
+    statGrid.appendChild(makeStat('Ad Spend',         u.fmtCurrency(lastRow.ad_spend),  wowSub(lastRow.ad_spend_wow, true)));
+    statGrid.appendChild(makeStat('ROI',              u.fmtMultiplier(lastRow.roi),     'GMV ÷ ad spend · 8-wk avg ' + u.fmtMultiplier(ws.totals.avg_weekly_roi)));
+    statGrid.appendChild(makeStat('CPO',              u.fmtCurrency(lastRow.cpo, { decimals: 2 }), wowSub(lastRow.cpo_wow, true)));
+    statGrid.appendChild(makeStat('Orders',           u.fmtNumber(lastRow.total_orders), wowSub(lastRow.total_orders_wow)));
     root.appendChild(statGrid);
+
+    // KPI legend
+    var legend = u.el('div', { class: 'kpi-legend' });
+    legend.innerHTML = '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Total Weekly GMV</dt><dd>Total gross merchandise value attributed to this channel for the reporting week.</dd>' +
+        '<dt>Ad Spend</dt><dd>TikTok GMV-max ad spend allocated to covered SKUs for the week.</dd>' +
+        '<dt>ROI</dt><dd>GMV ÷ ad spend (TikTok GMV-max campaign metric). Not directly comparable to agency ROAS.</dd>' +
+        '<dt>CPO</dt><dd>Cost per order (ad spend ÷ orders). Lower is better; tracked WoW with inverted color.</dd>' +
+        '<dt>Orders</dt><dd>Distinct shop orders attributed to this channel for the week.</dd>' +
+      '</dl>';
+    root.appendChild(legend);
 
     // GMV + Ad spend trend chart
     var chartCard = u.el('div', { class: 'card' });

@@ -49,13 +49,13 @@
       console.error('Chart.js not loaded');
       return;
     }
-    Chart.defaults.font.family = "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+    Chart.defaults.font.family = "'Fira Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
     Chart.defaults.font.size   = 12;
-    Chart.defaults.color       = '#64748b';
+    Chart.defaults.color       = '#8C9091';                /* brand neutral */
     Chart.defaults.plugins.legend.labels.boxWidth = 12;
-    Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
-    Chart.defaults.plugins.tooltip.titleColor      = '#f8fafc';
-    Chart.defaults.plugins.tooltip.bodyColor       = '#e2e8f0';
+    Chart.defaults.plugins.tooltip.backgroundColor = '#222222'; /* brand charcoal */
+    Chart.defaults.plugins.tooltip.titleColor      = '#FFFFFF';
+    Chart.defaults.plugins.tooltip.bodyColor       = '#E8E8E4';
     Chart.defaults.plugins.tooltip.padding         = 10;
     Chart.defaults.plugins.tooltip.cornerRadius    = 8;
     Chart.defaults.animation.duration              = 300;
@@ -67,29 +67,16 @@
     var header = document.getElementById('site-header');
     if (!header) return;
 
+    // Wordmark on charcoal header — clean, no controls. The GM slider was
+    // only meaningful for forecasting/CM views and has been removed with
+    // the forecasting section.
     header.innerHTML =
-      '<a class="logo" href="#" onclick="return false;">' +
-        '<div class="logo-mark">N</div>' +
-        '<div><div class="brand-name">Nusava</div><div class="brand-sub">Creator Intelligence</div></div>' +
+      '<a class="logo" href="#" onclick="return false;" aria-label="Nusava">' +
+        '<img class="logo-wordmark" src="assets/nusava-wordmark-white.svg" alt="nusava">' +
+        '<span class="logo-divider" aria-hidden="true"></span>' +
+        '<span class="brand-sub">Creator Intelligence</span>' +
       '</a>' +
-      '<div class="header-spacer"></div>' +
-      '<div class="gm-control">' +
-        '<label for="gm-slider">Gross Margin</label>' +
-        '<input type="range" id="gm-slider" min="10" max="80" step="1" value="' + Math.round(state.grossMargin * 100) + '">' +
-        '<span class="gm-value" id="gm-value">' + Math.round(state.grossMargin * 100) + '%</span>' +
-      '</div>';
-
-    // Gross margin slider
-    var slider = document.getElementById('gm-slider');
-    var gmVal  = document.getElementById('gm-value');
-    if (slider) {
-      slider.addEventListener('input', function () {
-        state.grossMargin  = parseInt(this.value) / 100;
-        CONFIG.grossMargin = state.grossMargin;
-        if (gmVal) gmVal.textContent = this.value + '%';
-        rerender();
-      });
-    }
+      '<div class="header-spacer"></div>';
   }
 
   /* ── Build agency nav bar ── */
@@ -97,26 +84,12 @@
     var nav = document.getElementById('agency-nav');
     if (!nav) return;
 
+    // Top-level nav (rationalized 2026-05). 4 entries — affiliate engine, narratives, alerts.
+    // Forecasting was removed; it lives in a separate project. Search functionality
+    // moved into per-tab search bars on Creators + Videos in Affiliate Performance.
     var html = '<button class="nav-tab" data-view="executive">Executive</button>';
-
-    CONFIG.agencies.forEach(function (ag) {
-      html += '<button class="nav-tab" data-view="' + ag.id + '">' +
-        '<span class="agency-dot" style="background:' + ag.color + '"></span>' +
-        ag.short +
-        '</button>';
-    });
-
-    // Aggregated agency insights — sits with the per-agency tabs
-    html += '<button class="nav-tab" data-view="agency_insights">Agency Insights</button>';
-
-    // Separator
+    html += '<button class="nav-tab" data-view="affiliate_performance">Affiliate Performance</button>';
     html += '<div style="flex:1"></div>';
-
-    // TikTok views — Performance (creator/video analytics) + Forecasting (GMV/inventory/profit)
-    html += '<button class="nav-tab" data-view="weekly">TikTok Performance</button>';
-    html += '<button class="nav-tab" data-view="tiktok">TikTok Forecasting</button>';
-    html += '<button class="nav-tab" data-view="search">Search</button>';
-    html += '<button class="nav-tab" data-view="affiliates">Affiliates</button>';
     html += '<button class="nav-tab" data-view="narrative">Narratives</button>';
     html += '<button class="nav-tab" data-view="alerts">Alerts</button>';
 
@@ -210,12 +183,12 @@
     // Kill all chart instances before re-render
     Object.keys(Charts.instances).forEach(function (id) { Charts.kill(id); });
 
-    // Weekly time-range routes to the new TikTok weekly view
+    // Weekly time-range jumps straight into the affiliate engine.
     if (state.timeRange === 'weekly') {
-      Views.weekly.render();
+      Views.affiliate_performance.render();
       return;
     }
-    // Daily still surfaces the placeholder (no daily data yet)
+    // Daily surfaces the placeholder (no daily-level data wired yet)
     if (state.timeRange === 'daily') {
       renderTimePlaceholder(state.timeRange);
       return;
@@ -223,22 +196,15 @@
 
     if (state.view === 'executive') {
       Views.executive.render();
-    } else if (state.view === 'weekly') {
-      Views.weekly.render();
-    } else if (state.view === 'tiktok') {
-      Views.tiktok.render();
-    } else if (state.view === 'agency_insights') {
-      Views.agency_insights.render();
-    } else if (state.view === 'affiliates') {
-      Views.affiliates.render();
-    } else if (state.view === 'search') {
-      Views.search.render();
+    } else if (state.view === 'affiliate_performance') {
+      Views.affiliate_performance.render();
     } else if (state.view === 'narrative') {
       Views.narrative.render();
     } else if (state.view === 'alerts') {
       Views.alerts.render();
     } else {
-      Views.agency.render(state.view);
+      // Legacy URL / deep link → fall through to Affiliate Performance.
+      Views.affiliate_performance.render();
     }
   }
 
@@ -250,8 +216,7 @@
     var label = range === 'daily' ? 'Daily' : 'Weekly';
     main.innerHTML =
       '<div class="placeholder-card" style="margin-top:60px">' +
-        '<div class="ph-icon">📅</div>' +
-        '<h3>' + label + ' View Requires Video-Level Data</h3>' +
+        '<h3>' + label + ' view requires video-level data</h3>' +
         '<p>' +
           'Video-level daily data required. Export from TikTok Shop Creator Center, ' +
           'or connect the Cruva API in <code>js/config.js</code> to populate this view automatically.' +

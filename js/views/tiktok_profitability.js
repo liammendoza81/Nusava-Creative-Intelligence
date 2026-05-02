@@ -17,21 +17,28 @@
       'Contribution margin per week (B12 + D3K2 — covers the 95% of GMV with unit-economics data). '
       + 'Bundles + B12 1PK aren\'t in the calculator and are excluded from these numbers.'));
 
-    // KPI strip — latest week's CM + ROAS callout
+    // KPI strip — 3 cards focused on the contribution-margin stack.
     var lastWk = p.weekly_totals[p.weekly_totals.length - 1];
     var grid = u.el('div', { class: 'stat-grid' });
-    grid.appendChild(makeStat('Latest GMV', u.fmtCurrency(lastWk.gmv), lastWk.week));
-    grid.appendChild(makeStat('CM excl. ads', u.fmtCurrency(lastWk.cm_excl_ads),
-      'Net revenue minus variable costs (excl. ad spend)'));
-    grid.appendChild(makeStat('Allocated ad spend', u.fmtCurrency(lastWk.ad_spend),
-      'Ad spend allocated to covered SKUs'));
-    grid.appendChild(makeStat('CM after ads',
+    grid.appendChild(makeStat('CM Excl. Ads', u.fmtCurrency(lastWk.cm_excl_ads),
+      lastWk.week + ' · net rev − variable costs'));
+    grid.appendChild(makeStat('CM After Ads',
       coloredCurrency(lastWk.cm_after_ads),
-      lastWk.cm_after_ads >= 0 ? 'Positive' : 'Negative — channel burning cash'));
-    grid.appendChild(makeStat('CM after retainer',
+      lastWk.cm_after_ads >= 0 ? 'Positive after ' + u.fmtCurrency(lastWk.ad_spend) + ' ad spend' : 'Negative — channel burning cash'));
+    grid.appendChild(makeStat('CM After Retainer',
       coloredCurrency(lastWk.cm_after_retainer),
       'Net of weekly retainer fixed costs'));
     root.appendChild(grid);
+
+    // KPI legend
+    var legend = u.el('div', { class: 'kpi-legend' });
+    legend.innerHTML = '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>CM Excl. Ads</dt><dd>Contribution margin before ad spend: net revenue minus variable unit costs (COGS, packaging, fulfillment, affiliate commission).</dd>' +
+        '<dt>CM After Ads</dt><dd>CM Excl. Ads minus allocated TikTok ad spend. The first true "is this channel paying for itself" cut.</dd>' +
+        '<dt>CM After Retainer</dt><dd>CM After Ads minus weekly retainer fixed costs. The bottom-line cash number for the channel.</dd>' +
+      '</dl>';
+    root.appendChild(legend);
 
     // === Subscription block (NEW) ===
     var sub = p.subscription_block;

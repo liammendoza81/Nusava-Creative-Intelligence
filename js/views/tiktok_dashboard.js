@@ -41,7 +41,6 @@
     var data = window.DASHBOARD_DATA;
     if (!data) {
       main.innerHTML = '<div class="empty-state">' +
-        '<div class="empty-state-icon">⚠</div>' +
         '<h3>TikTok forecasting data not loaded</h3>' +
         '<p>Re-run <code>/weekly-tiktok-dashboard</code> to regenerate <code>data/dashboard.js</code>.</p>' +
         '</div>';
@@ -62,7 +61,7 @@
         '<div class="subtitle">' +
           'Week ' + escapeHtml(meta.week_label || '?') + ' &middot; ' +
           escapeHtml(meta.week_period || '?') +
-          (meta.is_partial_week ? ' &middot; <span style="color:var(--orange)">&#9889; partial week</span>' : '') +
+          (meta.is_partial_week ? ' &middot; <span style="color:var(--action)">partial week</span>' : '') +
           (meta.generated_at ? ' &middot; Generated ' + new Date(meta.generated_at).toLocaleString() : '') +
         '</div>' +
       '</div>' +

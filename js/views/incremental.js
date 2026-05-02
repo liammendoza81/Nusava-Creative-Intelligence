@@ -80,9 +80,9 @@ window.Incremental = (function () {
     var totalNew    = months.reduce(function(s,m){ return s+m.new_gmv;    },0);
     var totalLegacy = months.reduce(function(s,m){ return s+m.legacy_gmv; },0);
     var totalAll    = totalNew + totalLegacy;
-    var avgNewPct   = totalAll > 0 ? (totalNew/totalAll*100).toFixed(1) : 0;
+    var avgNewPct   = totalAll > 0 ? (totalNew/totalAll*100).toFixed(2) : 0;
     var latest      = months[months.length-1];
-    var latestNewPct = latest.total_gmv > 0 ? (latest.new_gmv/latest.total_gmv*100).toFixed(1) : 0;
+    var latestNewPct = latest.total_gmv > 0 ? (latest.new_gmv/latest.total_gmv*100).toFixed(2) : 0;
     var bestMonth   = months.slice().sort(function(a,b){ var pa=a.total_gmv>0?a.new_gmv/a.total_gmv:0, pb=b.total_gmv>0?b.new_gmv/b.total_gmv:0; return pb-pa; })[0];
 
     var html = '<div class="tab-pane">';
@@ -96,7 +96,7 @@ window.Incremental = (function () {
     html += kpiCard('Total New Contract GMV', U.fmt$(totalNew),    avgNewPct+'% of all GMV', 'blue');
     html += kpiCard('Total Legacy Carryover', U.fmt$(totalLegacy), (100-avgNewPct)+'% carryover from prior periods', 'orange');
     html += kpiCard('Latest Month New %',     latestNewPct+'%',    latest.label+': '+U.fmt$(latest.new_gmv)+' new GMV', latestNewPct>=75?'green':latestNewPct>=50?'yellow':'red');
-    html += kpiCard('Best Incremental Month', bestMonth.label,     (bestMonth.total_gmv>0?(bestMonth.new_gmv/bestMonth.total_gmv*100).toFixed(1):'0')+'% new GMV', 'green');
+    html += kpiCard('Best Incremental Month', bestMonth.label,     (bestMonth.total_gmv>0?(bestMonth.new_gmv/bestMonth.total_gmv*100).toFixed(2):'0')+'% new GMV', 'green');
     html += '</div>';
 
     // Charts
@@ -126,7 +126,7 @@ window.Incremental = (function () {
       html += '<td>'+U.fmt$(m.new_gmv)+'</td>';
       html += '<td>'+U.fmt$(m.legacy_gmv)+'</td>';
       html += '<td><strong>'+U.fmt$(m.total_gmv)+'</strong></td>';
-      html += '<td>'+(m.total_gmv>0?(m.new_gmv/m.total_gmv*100).toFixed(1)+'%':'—')+'</td>';
+      html += '<td>'+(m.total_gmv>0?(m.new_gmv/m.total_gmv*100).toFixed(2)+'%':'—')+'</td>';
       html += '<td><span class="'+sig.cls+'">'+sig.label+'</span></td>';
       html += '</tr>';
     });
@@ -167,7 +167,7 @@ window.Incremental = (function () {
       var totNew  = months.reduce(function(s,m){return s+m.new_gmv;},0);
       var totLeg  = months.reduce(function(s,m){return s+m.legacy_gmv;},0);
       var totAll  = totNew + totLeg;
-      var avgPct  = totAll > 0 ? (totNew/totAll*100).toFixed(1) : 0;
+      var avgPct  = totAll > 0 ? (totNew/totAll*100).toFixed(2) : 0;
       var latest  = months[months.length-1];
       var latPct  = latest.total_gmv > 0 ? latest.new_gmv/latest.total_gmv : 0;
       var sig     = getSignal(latPct, months.length === 1);
@@ -194,7 +194,7 @@ window.Incremental = (function () {
         var ag    = DATA[id];
         var agCfg = U.getAgencyConfig(id);
         var lat   = ag.months[ag.months.length-1];
-        var pct   = lat.total_gmv > 0 ? parseFloat((lat.new_gmv/lat.total_gmv*100).toFixed(1)) : 0;
+        var pct   = lat.total_gmv > 0 ? parseFloat((lat.new_gmv/lat.total_gmv*100).toFixed(2)) : 0;
         agNames.push(agCfg ? agCfg.short : id);
         agPcts.push(pct);
         agColors.push(ag.color+'cc');

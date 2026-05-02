@@ -17,13 +17,13 @@
     root.appendChild(u.el('h2', { class: 'section-title' }, 'Executive Insights'));
     root.appendChild(u.el('p', { class: 'section-sub' },
       'Generated ' + new Date(meta.generated_at).toLocaleString()
-      + (meta.is_partial_week ? ' · ⚠ ' + meta.days_in_week + '-day reporting window' : '')));
+      + (meta.is_partial_week ? ' · ' + meta.days_in_week + '-day reporting window' : '')));
 
     // === Action Required alerts (from action_plan) — top priority ===
     var ap = data.action_plan;
     if (ap && ap.available && ap.urgent_alerts && ap.urgent_alerts.length) {
       var alertsCard = u.el('div', { class: 'callout danger' });
-      var html = '<p style="margin:0 0 8px"><strong>⚠ Action required this week — ' + ap.urgent_alerts.length
+      var html = '<p style="margin:0 0 8px"><strong>Action required this week — ' + ap.urgent_alerts.length
         + ' urgent alert' + (ap.urgent_alerts.length === 1 ? '' : 's') + '</strong></p>'
         + '<ul style="margin:4px 0 0; padding-left:22px; line-height:1.55;">';
       ap.urgent_alerts.forEach(function (a) {

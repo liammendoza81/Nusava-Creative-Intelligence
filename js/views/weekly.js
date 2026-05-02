@@ -97,7 +97,6 @@ window.Views.weekly = (function () {
     if (!D) {
       main.innerHTML =
         '<div class="placeholder-card" style="margin-top:60px">' +
-          '<div class="ph-icon">📊</div>' +
           '<h3>Weekly TikTok data not loaded</h3>' +
           '<p>Run <code>tiktok_weekly_dashboard_html.py</code> from ' +
           '<code>/Performance Reporting/Dashboard/</code> to populate ' +
@@ -183,27 +182,53 @@ window.Views.weekly = (function () {
     var fOrders = c.reduce(function (s, r) { return s + r.orders; }, 0);
     var fSellers = c.length;
 
+    // 5 cards (was 6 → 8 originally). 2026-05 final cull: WoW $ folded into Total
+    // Weekly GMV subtitle (one card, both signals). Title Case on labels.
+    var wowDollar = (k.wow_dollar != null) ? k.wow_dollar : null;
+    var wowPart = '';
+    if (wowDollar != null && k.wow_pct != null) {
+      var arrow = wowDollar >= 0 ? '▲' : '▼';
+      var sign = wowDollar >= 0 ? '+' : '−';
+      wowPart = arrow + ' ' + sign + fmtMoney(Math.abs(wowDollar)) + ' (' + (wowDollar >= 0 ? '+' : '−') + Math.abs(k.wow_pct).toFixed(2) + '% WoW)';
+    } else {
+      wowPart = 'baseline';
+    }
     var html = '<div class="kpi-grid">';
-    html += kpiCard('Total GMV',
+    html += kpiCard('Total Weekly GMV',
       _agencyFilter === 'all' ? fmtMoney(k.total_gmv) : fmtMoney(fGMV),
-      k.wow_pct == null ? 'baseline' : (k.wow_pct >= 0 ? '▲ ' + k.wow_pct + '% WoW' : '▼ ' + Math.abs(k.wow_pct) + '% WoW'),
-      'blue');
-    html += kpiCard('Video GMV', fmtMoney(k.video_gmv), k.total_orders.toLocaleString() + ' orders', 'purple');
+      wowPart,
+      'green');
     html += kpiCard('Selling Videos',
       _agencyFilter === 'all' ? k.selling_videos.toLocaleString() : visible(D.topVideos).length + '+',
-      'of ' + k.total_videos.toLocaleString() + ' tracked', 'green');
-    html += kpiCard('New Winners (≤14d)', k.new_selling_videos.toLocaleString(), 'fresh content', 'green');
-    html += kpiCard('Legacy Sellers (>30d)', k.legacy_selling_videos.toLocaleString(), k.legacy_pct + '% of GMV', 'yellow');
-    html += kpiCard('Selling Creators',
+      'of ' + k.total_videos.toLocaleString() + ' tracked',
+      'green');
+    html += kpiCard('Selling Creators (This Week)',
       _agencyFilter === 'all' ? k.selling_creators.toLocaleString() : fSellers.toLocaleString(),
-      'of ' + k.total_creators.toLocaleString() + ' tracked', 'orange');
-    html += kpiCard('Top 5 Concentration', k.top5_creator_share + '%', 'GMV from top 5 creators', 'red');
-    html += kpiCard('Top 5 Video Share', k.top5_video_share + '%', 'GMV from top 5 videos', 'red');
+      'of ' + k.total_creators.toLocaleString() + ' tracked',
+      'orange');
+    html += kpiCard('New Winners (≤14d)',
+      k.new_selling_videos.toLocaleString(),
+      k.new_pct != null ? k.new_pct.toFixed(2) + '% of GMV' : 'fresh content',
+      'green');
+    html += kpiCard('Top-5 Concentration',
+      k.top5_creator_share.toFixed(2) + '% / ' + k.top5_video_share.toFixed(2) + '%',
+      'creators / videos share of GMV',
+      'red');
     html += '</div>';
 
+    // KPI legend
+    html += '<div class="kpi-legend">' +
+      '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Total Weekly GMV</dt><dd>All shoppable-video + livestream GMV for the reporting week. WoW change shown in dollars and percent.</dd>' +
+        '<dt>Selling Videos</dt><dd>Number of videos that produced any GMV this week, against the total tracked.</dd>' +
+        '<dt>Selling Creators (This Week)</dt><dd>Distinct creators with ≥ 1 selling video this week. Note: not the same as performing creators on the agency side (different cadence + denominator).</dd>' +
+        '<dt>New Winners (≤14d)</dt><dd>Selling videos posted in the last 14 days — measures pipeline freshness.</dd>' +
+        '<dt>Top-5 Concentration</dt><dd>Share of weekly GMV from the top 5 creators / top 5 videos. High concentration = pipeline fragility.</dd>' +
+      '</dl></div>';
+
     // Leadership insight banner
-    html += '<div class="alert-bar" style="margin-bottom:14px"><div class="alert alert-blue">'
-      + '<span class="alert-icon">🎯</span><div>'
+    html += '<div class="alert-bar" style="margin-bottom:14px"><div class="alert alert-blue"><div>'
       + '<div style="margin-bottom:6px"><strong>What happened:</strong> ' + ins.what + '</div>'
       + '<div style="margin-bottom:6px"><strong>Why it matters:</strong> ' + ins.why + '</div>'
       + '<div><strong>Recommended actions:</strong><ul style="margin:4px 0 0 20px;padding:0">'
@@ -246,22 +271,48 @@ window.Views.weekly = (function () {
   function newSection(D) {
     var rows = visible(D.newWinners);
     var newGMV = rows.reduce(function (s, r) { return s + r.gmv; }, 0);
-    var fast = rows.filter(function (r) { return r.age <= 3 && r.gmv >= 100; });
 
+    // New post yield: of all videos posted in the last 7 days, what % generated GMV?
+    // Pulls from ageBuckets[New (0-7d)] which carries both `videos` (total posts in window)
+    // and `selling` (subset that produced GMV). Drops `≤3-day Winners` and `Median Age`
+    // (the latter lives in TTP) per 2026-05 KPI rationalization.
+    var newBucket = (D.ageBuckets || []).find(function (b) {
+      return b['Age bucket'] === 'New (0-7d)';
+    }) || { videos: 0, selling: 0, gmv: 0 };
+    var newPostYield = newBucket.videos > 0 ? (newBucket.selling / newBucket.videos * 100) : 0;
+    var yieldColor = newPostYield >= 5 ? 'green' : newPostYield >= 2 ? 'yellow' : 'red';
+
+    var top = rows.length ? rows[0] : null;
+
+    // 3 cards (was 4). Dropped "New Selling Videos" (already on Summary as "New Winners ≤14d").
     var html = '<div class="kpi-grid">';
-    html += kpiCard('New Selling Videos', rows.length, '≤14d old', 'green');
-    html += kpiCard('GMV from New Winners', fmtMoney(newGMV),
-      D.kpis.video_gmv ? (newGMV / D.kpis.video_gmv * 100).toFixed(1) + '% of weekly video GMV' : '', 'blue');
-    html += kpiCard('≤3-day Winners ($100+)', fast.length, 'fastest ramp-ups', 'purple');
-    var medianAge = rows.length ? Math.round(rows.reduce(function (s,r) { return s+r.age; }, 0) / rows.length) : 0;
-    html += kpiCard('Median Age (selling)', medianAge + 'd', '', 'orange');
+    html += kpiCard('New Post Yield (7d)',
+      newPostYield.toFixed(2) + '%',
+      newBucket.selling.toLocaleString() + ' of ' + newBucket.videos.toLocaleString() + ' fresh posts produced GMV',
+      yieldColor);
+    html += kpiCard('GMV From New', fmtMoney(newGMV),
+      D.kpis.video_gmv ? (newGMV / D.kpis.video_gmv *100).toFixed(2) + '% of weekly video GMV' : '',
+      'green');
+    html += kpiCard('Top New Video',
+      top ? fmtMoney(top.gmv) : '—',
+      top ? '@' + top.creator : '',
+      'orange');
     html += '</div>';
+
+    // KPI legend
+    html += '<div class="kpi-legend">' +
+      '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>New Post Yield (7d)</dt><dd>Of all videos posted in the last 7 days, the share that produced any GMV. Higher = fresh content is converting.</dd>' +
+        '<dt>GMV From New</dt><dd>Total weekly GMV from videos posted ≤14 days ago, plus its share of weekly video GMV.</dd>' +
+        '<dt>Top New Video</dt><dd>Highest-grossing video posted ≤14 days ago this week.</dd>' +
+      '</dl></div>';
 
     var note = rows.length >= 50
       ? '<strong>' + rows.length + ' new videos</strong> are producing GMV — pipeline is alive. Top of stack: @'
         + (rows[0]||{}).creator + ' at ' + fmtMoney((rows[0]||{}).gmv)
       : '<strong>Only ' + rows.length + ' new videos</strong> are producing GMV — pipeline is thin. Push briefs and expand sample volume this week.';
-    html += '<div class="alert-bar"><div class="alert alert-blue"><span class="alert-icon">⚡</span><div>' + note + '</div></div></div>';
+    html += '<div class="alert-bar"><div class="alert alert-blue"><div>' + note + '</div></div></div>';
 
     html += '<div style="height:12px"></div>';
     html += renderVideoTable(rows, 'wk-tbl-new');
@@ -274,14 +325,30 @@ window.Views.weekly = (function () {
     var legGMV = D.ageBuckets.filter(function(b){return b['Age bucket']==='Legacy (31-90d)' || b['Age bucket']==='Long-tail (90+d)';})
       .reduce(function(s,b){return s+b.gmv;}, 0);
 
-    var html = '<div class="kpi-grid">';
-    html += kpiCard('Legacy Selling Videos', D.kpis.legacy_selling_videos, '>30 days old', 'yellow');
-    html += kpiCard('Legacy GMV', fmtMoney(legGMV), D.kpis.legacy_pct + '% of video GMV', 'orange');
-    html += kpiCard('Top Legacy GMV', fmtMoney((rows[0]||{}).gmv||0), '@' + ((rows[0]||{}).creator||'—'), 'red');
+    // 3 cards (was 4). Dropped "Legacy Selling Videos" count — folded into Legacy GMV subtitle.
     var lt = D.ageBuckets.find(function(b){return b['Age bucket']==='Long-tail (90+d)';});
-    var ltShare = D.kpis.video_gmv ? ((lt && lt.gmv) / D.kpis.video_gmv * 100).toFixed(1) : '0';
-    html += kpiCard('90d+ Long-tail Share', ltShare + '%', '', 'red');
+    var ltShare = D.kpis.video_gmv ? ((lt && lt.gmv) / D.kpis.video_gmv *100).toFixed(2) : '0';
+
+    var html = '<div class="kpi-grid">';
+    html += kpiCard('Legacy GMV', fmtMoney(legGMV),
+      D.kpis.legacy_pct.toFixed(2) + '% of video GMV · ' + D.kpis.legacy_selling_videos.toLocaleString() + ' selling videos >30d old',
+      'orange');
+    html += kpiCard('90d+ Long-tail Share', ltShare + '%',
+      'GMV from videos older than 90 days', 'red');
+    html += kpiCard('Top Legacy Video',
+      fmtMoney((rows[0]||{}).gmv||0),
+      '@' + ((rows[0]||{}).creator||'—'),
+      'red');
     html += '</div>';
+
+    // KPI legend
+    html += '<div class="kpi-legend">' +
+      '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Legacy GMV</dt><dd>Total weekly GMV from videos older than 30 days, plus its share of weekly video GMV. Heavy legacy share = pipeline isn\'t replacing winners fast enough.</dd>' +
+        '<dt>90d+ Long-tail Share</dt><dd>Share of weekly GMV from videos older than 90 days. High share suggests deep dependence on a few aged hits.</dd>' +
+        '<dt>Top Legacy Video</dt><dd>Highest-grossing video older than 30 days this week.</dd>' +
+      '</dl></div>';
 
     html += '<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">GMV & selling-video count by age bucket</div>'
       + '<div class="chart-sub">Bars = GMV · line = number of selling videos in that bucket</div>'
@@ -313,7 +380,7 @@ window.Views.weekly = (function () {
     var sev = rows.reduce(function (m, r) { m[r.severity] = (m[r.severity]||0)+1; return m; }, {});
     var lossSum = rows.reduce(function (s, r) { return s + Math.abs(r.delta); }, 0);
 
-    var html = '<div class="alert-bar"><div class="alert alert-yellow"><span class="alert-icon">⚠️</span><div>'
+    var html = '<div class="alert-bar"><div class="alert alert-yellow"><div>'
       + '<strong>' + rows.length + ' videos</strong> are below their Jan-Mar weekly average — '
       + 'Severe: ' + (sev.Severe||0) + ' · Moderate: ' + (sev.Moderate||0) + ' · Mild: ' + (sev.Mild||0) + '. '
       + 'Total weekly GMV gap to recapture: <strong>' + fmtMoney(lossSum) + '</strong>.'
@@ -339,7 +406,7 @@ window.Views.weekly = (function () {
         + '<td>' + fmtMoney(r.prior_avg) + '</td>'
         + '<td>' + fmtMoney(r.gmv) + '</td>'
         + '<td class="text-red">' + fmtMoney(r.delta) + '</td>'
-        + '<td class="text-red">' + r.pct.toFixed(1) + '%</td>'
+        + '<td class="text-red">' + r.pct.toFixed(2) + '%</td>'
         + '<td>' + fmtMoney(r.lifetime_gmv) + '</td>'
         + '</tr>';
     });
@@ -352,12 +419,30 @@ window.Views.weekly = (function () {
     var t = D.timeToPerf;
     var fastest = visible(t.fastest || []);
 
+    // 3 cards (was 4). Dropped "Avg age" — folded into Median Age subtitle (median is more robust).
     var html = '<div class="kpi-grid">';
-    html += kpiCard('Median age (selling this wk)', t.median_age + 'd', '', 'blue');
-    html += kpiCard('Avg age (selling this wk)', t.avg_age + 'd', '', 'purple');
-    html += kpiCard('Fastest ≤7d performers', fastest.length, '≤7d old, GMV>0', 'green');
-    html += kpiCard('Top fastest GMV', fmtMoney((fastest[0]||{}).gmv||0), '@' + ((fastest[0]||{}).creator||'—'), 'orange');
+    html += kpiCard('Median Post-to-Perf Age',
+      t.median_age + 'd',
+      'avg ' + t.avg_age + 'd · selling videos this week',
+      'green');
+    html += kpiCard('Fastest ≤7d Performers',
+      fastest.length,
+      '≤7d old, GMV > 0',
+      'green');
+    html += kpiCard('Top Fastest GMV',
+      fmtMoney((fastest[0]||{}).gmv||0),
+      '@' + ((fastest[0]||{}).creator||'—'),
+      'orange');
     html += '</div>';
+
+    // KPI legend
+    html += '<div class="kpi-legend">' +
+      '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Median Post-to-Perf Age</dt><dd>Median number of days from post date to first GMV across all selling videos this week. Lower = videos converting faster after publication.</dd>' +
+        '<dt>Fastest ≤7d Performers</dt><dd>Count of videos that produced GMV within 7 days of posting — pipeline of fast-ramping content.</dd>' +
+        '<dt>Top Fastest GMV</dt><dd>Highest single-video GMV among the fast-performing ≤7d set.</dd>' +
+      '</dl></div>';
 
     html += '<div class="chart-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
     html += '<div class="chart-card"><div class="chart-title">Days from post to milestone</div>'
@@ -421,7 +506,7 @@ window.Views.weekly = (function () {
   /* ── 8. Agency Split ── */
   function agencySection(D) {
     var rows = D.agencyRollup || [];
-    var html = '<div class="alert-bar"><div class="alert alert-blue"><span class="alert-icon">🏢</span><div>'
+    var html = '<div class="alert-bar"><div class="alert alert-blue"><div>'
       + 'Attribution sourced from <code>03_TikTok/Agency/&lt;agency&gt;/*.csv</code> rosters. '
       + 'Roster sizes: '
       + Object.keys(D.agencyRosterSizes || {}).map(function (k) {
@@ -486,7 +571,7 @@ window.Views.weekly = (function () {
     D.creatorStatus.forEach(function (r) {
       html += '<tr><td style="text-align:left">' + statusBadge(r.Status) + '</td><td>'
         + r.creators + '</td><td>' + fmtMoney(r.gmv) + '</td><td>'
-        + (r.gmv / totalC * 100).toFixed(1) + '%</td></tr>';
+        + (r.gmv / totalC *100).toFixed(2) + '%</td></tr>';
     });
     html += '</tbody></table></div></div>';
 
@@ -497,7 +582,7 @@ window.Views.weekly = (function () {
     D.videoStatus.forEach(function (r) {
       html += '<tr><td style="text-align:left">' + statusBadge(r.Status) + '</td><td>'
         + r.videos + '</td><td>' + fmtMoney(r.gmv) + '</td><td>'
-        + (r.gmv / totalV * 100).toFixed(1) + '%</td></tr>';
+        + (r.gmv / totalV *100).toFixed(2) + '%</td></tr>';
     });
     html += '</tbody></table></div></div>';
     return html;
@@ -512,7 +597,7 @@ window.Views.weekly = (function () {
     html += '<thead><tr><th style="text-align:left">Angle tag</th><th>GMV</th><th>Share</th><th>Selling videos</th><th>Orders</th></tr></thead><tbody>';
     (D.replication || []).forEach(function (r) {
       html += '<tr><td style="text-align:left">' + r.tag + '</td><td>'
-        + fmtMoney(r.gmv) + '</td><td>' + (r.share*100).toFixed(1) + '%</td><td>'
+        + fmtMoney(r.gmv) + '</td><td>' + (r.share*100).toFixed(2) + '%</td><td>'
         + r.videos + '</td><td>' + r.orders.toLocaleString() + '</td></tr>';
     });
     html += '</tbody></table></div></div>';
@@ -536,7 +621,7 @@ window.Views.weekly = (function () {
       });
     }
 
-    var html = '<div class="alert-bar"><div class="alert alert-blue"><span class="alert-icon">📋</span><div>'
+    var html = '<div class="alert-bar"><div class="alert alert-blue"><div>'
       + '<strong>How to read:</strong> Boost = paid amplification &nbsp;·&nbsp; '
       + 'Replicate = brief 3 lookalikes &nbsp;·&nbsp; Coach = traffic without conversion &nbsp;·&nbsp; '
       + 'Reactivate = creator dropped sharply &nbsp;·&nbsp; Replace = legacy decaying &nbsp;·&nbsp; '
@@ -667,7 +752,7 @@ window.Views.weekly = (function () {
           options: { plugins: { legend: { position: 'right' },
             tooltip: { callbacks: { label: function (c) {
               var t = D.ageBuckets.reduce(function(s,b){return s+b.gmv;}, 0);
-              return c.label + ': ' + fmtMoney(c.parsed) + ' (' + (c.parsed/t*100).toFixed(1) + '%)';
+              return c.label + ': ' + fmtMoney(c.parsed) + ' (' + (c.parsed/t*100).toFixed(2) + '%)';
             } } } } }
         }));
       }
@@ -828,7 +913,7 @@ window.Views.weekly = (function () {
                   datasets: [{ data: (D.replication||[]).map(function(r){return r.gmv;}), backgroundColor: '#0284c7' }] },
           options: { indexAxis: 'y', plugins: { legend: { display: false },
             tooltip: { callbacks: { label: function(c){
-              var r=D.replication[c.dataIndex]; return fmtMoney(c.parsed.x) + ' (' + (r.share*100).toFixed(1) + '%)';
+              var r=D.replication[c.dataIndex]; return fmtMoney(c.parsed.x) + ' (' + (r.share*100).toFixed(2) + '%)';
             } } } },
             scales: { x: { ticks: { callback: function(v){ return fmtMoney(v); } } } } }
         }));
@@ -836,6 +921,37 @@ window.Views.weekly = (function () {
     }
   }
 
-  return { render: render };
+  /* ── Public API for the Affiliate Performance orchestrator ──
+     The new affiliate_performance.js mounts individual sections inside
+     its own layout, so we expose the section-level renderer + state
+     setters without changing the legacy `render()` entry point. */
+  function renderSectionInto(sectionId, container) {
+    var D = window.DATA_WEEKLY;
+    if (!D) {
+      container.innerHTML = '<div class="placeholder-card">' +
+        '<h3>Weekly TikTok data not loaded</h3>' +
+        '<p>Re-run the weekly pipeline to regenerate <code>data/weekly-tiktok.js</code>.</p>' +
+        '</div>';
+      return;
+    }
+    var prev = _section;
+    _section = sectionId;
+    container.innerHTML = renderSection(sectionId, D);
+    setTimeout(function () { drawCharts(sectionId, D); }, 50);
+    _section = prev;
+  }
+  function setSource(s)  { _agencyFilter = s; }
+  function getSource()   { return _agencyFilter; }
+  function setSearch(q)  { _searchQ = q; }
+  function getData()     { return window.DATA_WEEKLY; }
+
+  return {
+    render: render,
+    renderSectionInto: renderSectionInto,
+    setSource: setSource,
+    getSource: getSource,
+    setSearch: setSearch,
+    getData: getData
+  };
 
 })();

@@ -16,7 +16,7 @@ window.Views.evaluation = {
     var agCfg   = U.getAgencyConfig(agencyId);
 
     if (!raw || !raw.creatorEvaluation || raw.creatorEvaluation.length === 0) {
-      container.innerHTML = '<div class="placeholder-card"><div class="ph-icon">📋</div><h3>No Evaluation Data</h3><p>Add creator data to <code>data/' + agencyId + '.js</code> → <code>creatorEvaluation</code> array.</p></div>';
+      container.innerHTML = '<div class="placeholder-card"><h3>No evaluation data</h3><p>Add creator data to <code>data/' + agencyId + '.js</code> → <code>creatorEvaluation</code> array.</p></div>';
       return;
     }
 
@@ -110,7 +110,7 @@ window.Views.evaluation = {
       : results.filter(function (r) { return r.eval.status === filter; });
 
     if (visible.length === 0) {
-      return '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🔍</div><h3>No creators match this filter</h3></div>';
+      return '<div class="empty-state" style="grid-column:1/-1"><h3>No creators match this filter</h3></div>';
     }
 
     return visible.map(function (r) {

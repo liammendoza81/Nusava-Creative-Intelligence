@@ -377,7 +377,7 @@ window.Charts = (function () {
         cutout: '60%',
         plugins: {
           legend: { position: 'right', labels: { font: { family: FONT, size: 11 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + ctx.raw.toLocaleString() + ' (' + ((ctx.raw / (totalGMV||1)) * 100).toFixed(1) + '%)'; } } }
+          tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + ctx.raw.toLocaleString() + ' (' + ((ctx.raw / (totalGMV||1)) *100).toFixed(2) + '%)'; } } }
         }
       }
     });
@@ -395,7 +395,7 @@ window.Charts = (function () {
     var values  = sorted.map(function(cr) { return cr.gmv || 0; });
     var total   = totalGMV || values.reduce(function(s,v) { return s+v; }, 0);
     var cum = [], running = 0;
-    values.forEach(function(v) { running += v; cum.push(parseFloat(((running / total) * 100).toFixed(1))); });
+    values.forEach(function(v) { running += v; cum.push(parseFloat(((running / total) *100).toFixed(2))); });
 
     instances[canvasId] = new Chart(c, {
       data: {
@@ -435,9 +435,9 @@ window.Charts = (function () {
       var creators = (topCreatorsByMonth && topCreatorsByMonth[key]) || [];
       var total = m.gmv || 1;
       var sorted = creators.slice().sort(function(a, b) { return (b.gmv||0) - (a.gmv||0); });
-      top1Share.push(sorted[0] ? parseFloat(((sorted[0].gmv / total) * 100).toFixed(1)) : 0);
+      top1Share.push(sorted[0] ? parseFloat(((sorted[0].gmv / total) *100).toFixed(2)) : 0);
       var t3 = sorted.slice(0, 3).reduce(function(s, cr) { return s + (cr.gmv||0); }, 0);
-      top3Share.push(parseFloat(((t3 / total) * 100).toFixed(1)));
+      top3Share.push(parseFloat(((t3 / total) *100).toFixed(2)));
     });
 
     instances[canvasId] = new Chart(c, {
@@ -727,7 +727,7 @@ window.Charts = (function () {
     var datasets = agencyDatasets.map(function(ag) {
       var map = {};
       (ag.months || []).forEach(function(m) {
-        map[m.label || m.period] = m.creators > 0 ? parseFloat(((m.performing / m.creators) * 100).toFixed(1)) : null;
+        map[m.label || m.period] = m.creators > 0 ? parseFloat(((m.performing / m.creators) *100).toFixed(2)) : null;
       });
       return {
         label: ag.name || ag.id,
@@ -743,7 +743,7 @@ window.Charts = (function () {
       options: {
         responsive: true,
         plugins: { legend: { position: 'top', labels: { font: { family: FONT, size: 11 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw != null ? ctx.raw.toFixed(1) + '%' : '—'); } } } },
+          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw != null ? ctx.raw.toFixed(2) + '%' : '—'); } } } },
         scales: {
           y: { min: 0, max: 100, ticks: { callback: function(v) { return v + '%'; }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.05)' } },
           x: { ticks: { font: { size: 11 } }, grid: { display: false } }
@@ -831,7 +831,7 @@ window.Charts = (function () {
         responsive: true,
         plugins: {
           legend: { position: 'top', labels: { font: { family: FONT, size: 11 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw!=null?ctx.raw.toFixed(1)+'%':'—'); } } }
+          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw!=null?ctx.raw.toFixed(2) + '%':'—'); } } }
         },
         scales: {
           y: { min: 0, max: 100, ticks: { callback: function(v) { return v+'%'; }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.05)' } },
@@ -885,7 +885,7 @@ window.Charts = (function () {
     var labels = months.map(function(m) { return m.label; });
     var ratios  = months.map(function(m) {
       var total = (m.new_gmv || 0) + (m.legacy_gmv || 0);
-      return total > 0 ? parseFloat(((m.new_gmv / total) * 100).toFixed(1)) : null;
+      return total > 0 ? parseFloat(((m.new_gmv / total) *100).toFixed(2)) : null;
     });
 
     instances[canvasId] = new Chart(c, {
@@ -918,7 +918,7 @@ window.Charts = (function () {
         responsive: true,
         plugins: {
           legend: { position: 'top', labels: { font: { family: FONT, size: 11 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw!=null?ctx.raw.toFixed(1)+'%':'—'); } } }
+          tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw!=null?ctx.raw.toFixed(2) + '%':'—'); } } }
         },
         scales: {
           y: { min: 0, max: 100, ticks: { callback: function(v) { return v+'%'; }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.05)' } },

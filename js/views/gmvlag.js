@@ -80,24 +80,24 @@ window.GmvLag = (function () {
   function renderForAgency(agencyId, container) {
     var agData = DATA[agencyId];
     if (!agData) {
-      container.innerHTML = '<div class="placeholder-card"><div class="ph-icon">📊</div>' +
-        '<h3>No Lag Data</h3><p>Add time-bucket data for this agency in <code>js/views/gmvlag.js</code></p></div>';
+      container.innerHTML = '<div class="placeholder-card">' +
+        '<h3>No lag data</h3><p>Add time-bucket data for this agency in <code>js/views/gmvlag.js</code></p></div>';
       return;
     }
 
     var months  = agData.months;
     var totals  = bucketTotals(months);
     var grand   = BUCKET_KEYS.reduce(function(s,k){ return s+totals[k]; },0);
-    var pct7    = grand > 0 ? (totals.d0_7/grand*100).toFixed(1) : 0;
-    var pct14   = grand > 0 ? ((totals.d0_7+totals.d8_14)/grand*100).toFixed(1) : 0;
-    var pct30   = grand > 0 ? ((totals.d0_7+totals.d8_14+totals.d15_30)/grand*100).toFixed(1) : 0;
+    var pct7    = grand > 0 ? (totals.d0_7/grand*100).toFixed(2) : 0;
+    var pct14   = grand > 0 ? ((totals.d0_7+totals.d8_14)/grand*100).toFixed(2) : 0;
+    var pct30   = grand > 0 ? ((totals.d0_7+totals.d8_14+totals.d15_30)/grand*100).toFixed(2) : 0;
     var totalVids = months.reduce(function(s,m){ return s+(m.total_videos||0); },0);
     var avgGpv  = totalVids > 0 ? grand/totalVids : 0;
 
     var html = '<div class="tab-pane">';
 
-    html += '<div class="alert alert-yellow" style="margin-bottom:16px"><span class="alert-icon">⚠️</span>' +
-      '<div><strong>Sample Data:</strong> Buckets estimated from monthly totals using typical supplement decay curves. ' +
+    html += '<div class="alert alert-yellow" style="margin-bottom:16px">' +
+      '<div><strong>Sample data:</strong> buckets estimated from monthly totals using typical supplement decay curves. ' +
       'Replace with TikTok Shop video-level export in <code>js/views/gmvlag.js → DATA.' + agencyId + '</code></div></div>';
 
     // KPIs
@@ -128,8 +128,8 @@ window.GmvLag = (function () {
 
     months.forEach(function(m) {
       var tot = BUCKET_KEYS.reduce(function(s,k){ return s+(m.buckets[k]||0); },0);
-      var p7  = tot > 0 ? (m.buckets.d0_7/tot*100).toFixed(1) : '—';
-      var p30 = tot > 0 ? ((m.buckets.d0_7+m.buckets.d8_14+m.buckets.d15_30)/tot*100).toFixed(1) : '—';
+      var p7  = tot > 0 ? (m.buckets.d0_7/tot*100).toFixed(2) : '—';
+      var p30 = tot > 0 ? ((m.buckets.d0_7+m.buckets.d8_14+m.buckets.d15_30)/tot*100).toFixed(2) : '—';
       html += '<tr><td><strong>'+m.label+'</strong></td>';
       html += '<td class="text-muted" style="font-size:11px">'+m.period+'</td>';
       html += '<td>'+(m.total_videos||0).toLocaleString()+'</td>';
@@ -153,7 +153,7 @@ window.GmvLag = (function () {
       Charts.kill('agency-lag-pct');
       var c = Charts.ctx('agency-lag-pct');
       if (c) {
-        var avgPcts = BUCKET_KEYS.map(function(k){ return grand > 0 ? parseFloat((totals[k]/grand*100).toFixed(1)) : 0; });
+        var avgPcts = BUCKET_KEYS.map(function(k){ return grand > 0 ? parseFloat((totals[k]/grand*100).toFixed(2)) : 0; });
         Charts.instances['agency-lag-pct'] = new Chart(c, {
           type: 'bar',
           data: {
@@ -206,8 +206,8 @@ window.GmvLag = (function () {
       html += '<tr>';
       html += '<td><span style="display:inline-flex;align-items:center;gap:6px">' +
         '<span style="width:8px;height:8px;border-radius:50%;background:'+r.color+'"></span>'+r.name+'</span></td>';
-      html += '<td>'+r.pct7.toFixed(1)+'%</td>';
-      html += '<td><span class="'+(r.pct30>=80?'text-green':r.pct30>=65?'':'text-red')+'">'+r.pct30.toFixed(1)+'%</span></td>';
+      html += '<td>'+r.pct7.toFixed(2)+'%</td>';
+      html += '<td><span class="'+(r.pct30>=80?'text-green':r.pct30>=65?'':'text-red')+'">'+r.pct30.toFixed(2)+'%</span></td>';
       html += '<td>'+r.days80+'</td>';
       html += '</tr>';
     });

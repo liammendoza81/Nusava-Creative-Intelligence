@@ -51,36 +51,48 @@
     main.innerHTML =
       '<div class="page-title">' +
         '<h1>Agency Insights</h1>' +
-        '<div class="subtitle">Aggregated executive read across all ' + agencies.length + ' agencies</div>' +
+        '<div class="subtitle">Aggregated executive read across all ' + agencies.length + ' agencies.</div>' +
       '</div>' +
 
       buildKPIStrip(sumGMV, sumCost, sumNet, blendedROI, totalCreators, totalPerf, blendedPerfRate) +
+      buildLegend() +
 
-      '<div class="section-header"><div class="section-title">Per-agency latest month</div></div>' +
+      '<div class="section-header"><div class="section-title">Per-Agency Latest Month</div></div>' +
       buildAgencyTable(agencies) +
 
-      '<div class="section-header"><div class="section-title">Action callouts</div></div>' +
+      '<div class="section-header"><div class="section-title">Action Callouts</div></div>' +
       buildActions(agencies, blendedROI);
   }
 
+  // 4 cards (was 6). Dropped: "Total agency GMV" + "Total agency cost" — both folded
+  // into the Net Contribution + Blended ROAS subtitles since they're the inputs, not
+  // the answer. Per 2026-05 KPI rationalization.
   function buildKPIStrip(sumGMV, sumCost, sumNet, blendedROI, totalCreators, totalPerf, blendedPerfRate) {
     return '<div class="kpi-grid">' +
-      kpiCard('Total agency GMV', U.fmt$(sumGMV), 'All months × all agencies', 'green') +
-      kpiCard('Total agency cost', U.fmt$(sumCost), 'Fees + samples + retainers', 'gray') +
-      kpiCard('Net contribution', U.fmt$(sumNet),
-        sumNet >= 0 ? 'GMV × GM − cost' : 'Net loss after costs',
+      kpiCard('Net Contribution', U.fmt$(sumNet),
+        'GMV ' + U.fmt$(sumGMV) + ' × GM − cost ' + U.fmt$(sumCost),
         sumNet >= 0 ? 'green' : 'red') +
-      kpiCard('Blended ROI', U.fmtX(blendedROI),
-        blendedROI != null && blendedROI >= U.getBreakEven()
-          ? 'Above break-even (' + U.fmtX(U.getBreakEven()) + ')'
-          : 'Below break-even',
+      kpiCard('Blended ROAS', U.fmtX(blendedROI),
+        'GMV ÷ ' + U.fmt$(sumCost) + ' cost · break-even ' + U.fmtX(U.getBreakEven()),
         blendedROI != null && blendedROI >= CONFIG.roi.excellent
           ? 'green' : (blendedROI >= CONFIG.roi.good ? 'yellow' : 'red')) +
-      kpiCard('Active creators (latest)', U.fmtNum(totalCreators), 'Across all agencies', 'purple') +
-      kpiCard('Performing rate', U.fmtPct(blendedPerfRate),
+      kpiCard('Active Creators', U.fmtNum(totalCreators),
+        'Across all agencies, latest month', 'gray') +
+      kpiCard('Performing Rate', U.fmtPct(blendedPerfRate),
         'Performing ÷ active (latest month)',
         blendedPerfRate >= CONFIG.perfRate.good ? 'green' : (blendedPerfRate >= CONFIG.perfRate.warn ? 'yellow' : 'red')) +
     '</div>';
+  }
+
+  function buildLegend() {
+    return '<div class="kpi-legend">' +
+      '<div class="kpi-legend-title">What these KPIs mean</div>' +
+      '<dl>' +
+        '<dt>Net Contribution</dt><dd>Cumulative across all agencies × all months: gross profit (GMV × gross-margin) minus all-in agency cost. The single bottom-line cash number for the agency program.</dd>' +
+        '<dt>Blended ROAS</dt><dd>Cumulative GMV ÷ cumulative cost across all agencies. Break-even = 1 ÷ gross margin.</dd>' +
+        '<dt>Active Creators</dt><dd>Total contracted creators across all agencies in the latest reporting month.</dd>' +
+        '<dt>Performing Rate</dt><dd>Performing creators ÷ active creators in the latest month — the share of paid roster that produced any GMV.</dd>' +
+      '</dl></div>';
   }
 
   function kpiCard(label, value, sub, color) {
@@ -99,7 +111,7 @@
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Latest GMV</th>' +
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Cost</th>' +
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Net</th>' +
-          '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">ROI</th>' +
+          '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">ROAS</th>' +
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Creators</th>' +
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Performing</th>' +
           '<th style="padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500)">Perf rate</th>' +
@@ -134,7 +146,7 @@
           severity: 'high',
           agency: a.config.short,
           color: a.config.color,
-          headline: a.config.short + ' ROI below 1.0x in latest month (' + U.fmtX(a.latest.roi) + ')',
+          headline: a.config.short + ' ROAS below 1.0x in latest month (' + U.fmtX(a.latest.roi) + ')',
           detail: 'GMV ' + U.fmt$(a.latest.gmv) + ' on cost ' + U.fmt$(a.latest.totalCost) +
                   ' = net ' + U.fmt$(a.latest.net) + '. Below break-even — review fee structure or pause.'
         });
@@ -143,7 +155,7 @@
           severity: 'medium',
           agency: a.config.short,
           color: a.config.color,
-          headline: a.config.short + ' below break-even ROI (' + U.fmtX(a.latest.roi) + ')',
+          headline: a.config.short + ' below break-even ROAS (' + U.fmtX(a.latest.roi) + ')',
           detail: 'Generates revenue but doesn\'t clear gross-margin break-even (' + U.fmtX(U.getBreakEven()) +
                   ' at ' + Math.round(CONFIG.grossMargin * 100) + '% GM). Net contribution: ' + U.fmt$(a.latest.net) + '.'
         });

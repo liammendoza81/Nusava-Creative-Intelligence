@@ -20,8 +20,8 @@ window.Views.agency = {
 
     if (!raw || !raw.months || raw.months.length === 0) {
       document.getElementById('main-content').innerHTML =
-        '<div class="placeholder-card" style="margin-top:40px"><div class="ph-icon">📂</div>' +
-        '<h3>No Data for ' + agCfg.name + '</h3>' +
+        '<div class="placeholder-card" style="margin-top:40px">' +
+        '<h3>No data for ' + agCfg.name + '</h3>' +
         '<p>Add monthly data to <code>data/' + agencyId + '.js</code></p></div>';
       return;
     }
@@ -64,8 +64,8 @@ window.Views.agency = {
       { id: 'evaluation',   label: 'Creator Evaluation'  },
       { id: 'concentration',label: 'Concentration'       },
       { id: 'video',        label: 'Video Performance'   },
-      { id: 'gmvlag',       label: '⏱ GMV Lag'           },
-      { id: 'incremental',  label: '📈 Incremental'       },
+      { id: 'gmvlag',       label: 'GMV Lag'             },
+      { id: 'incremental',  label: 'Incremental'         },
       { id: 'table',        label: 'Data Table'          }
     ];
 
@@ -143,30 +143,52 @@ window.Views.agency = {
 
     // Alerts
     if (agId === 'creatify') {
-      html += '<div class="alert-bar"><div class="alert alert-yellow"><span class="alert-icon">⚠️</span><div>' +
-        '<strong>M6 One-Time Spike:</strong> palomaashop contributed $103,842 in M6 — a one-time outlier. ' +
-        'Underlying M6 trend ex-palomaashop ≈ $278,699. ROI of ' + U.fmtX(months[5] && months[5].roi) + ' reflects this spike.</div></div></div>';
+      html += '<div class="alert-bar"><div class="alert alert-yellow"><div>' +
+        '<strong>M6 one-time spike:</strong> palomaashop contributed $103,842 in M6 — a one-time outlier. ' +
+        'Underlying M6 trend ex-palomaashop ≈ $278,699. ROAS of ' + U.fmtX(months[5] && months[5].roi) + ' reflects this spike.</div></div></div>';
     }
 
     if (!hasSampleCosts) {
-      html += '<div class="info-notice">ℹ️ Sample product costs not tracked for ' + agCfg.short + '. ROI is calculated on ' + costLbl.toLowerCase() + ' only.</div>';
+      html += '<div class="info-notice">Sample product costs not tracked for ' + agCfg.short + '. ROAS is calculated on ' + costLbl.toLowerCase() + ' only.</div>';
     }
 
-    // KPI grid
+    // KPI grid — 5 cards (was 6). Per 2026-05 KPI rationalization:
+    // - Dropped "Latest cost" → folded into ROAS subtitle as denominator
+    // - Dropped "Total views" → vanity metric, agencies aren't paid on views
+    // - Added "Median Post-to-Perf" (TTP for this agency's creators, when weekly data is loaded)
+    var totalLatestCost = isInternal && latest.fees === 0 ? (latest.retainerCost || 0) : (latest.cost || 0);
+    var costSub = (hasSampleCosts ? ' + ' + U.fmt$(latest.sampleCosts || 0) + ' samples' : '');
+
+    // Per-agency TTP — pulls from window.DATA_WEEKLY (TikTok performance data) if loaded.
+    // Filters topVideos to this agency, then computes median age. Falls back to "—" if not.
+    var ttpMedian = computeAgencyTTP(agId);
+
     html += '<div class="kpi-grid">';
-    html += kpiCard('Latest GMV', U.fmt$(latest.gmv), latest.period, 'blue');
-    html += kpiCard('Latest ' + costLbl, isInternal && latest.fees === 0 ? U.fmt$(latest.retainerCost || 0) : U.fmt$(latest.cost), (hasSampleCosts ? '+ ' + U.fmt$(latest.sampleCosts || 0) + ' samples' : 'No samples tracked'), isInternal ? 'green' : 'purple');
-    html += kpiCard('GMV / Fee Multiple', U.fmtX(latest.roi), U.roiCls(latest.roi) === 'text-green' ? 'Excellent' : U.roiCls(latest.roi) === 'text-yellow' ? 'Good' : 'Below breakeven', latest.roi >= breakEven ? 'green' : 'red');
-    html += kpiCard('Performing Creators', latest.performing + ' / ' + latest.creators, U.fmtPct(latest.perfRate) + ' performing rate', U.perfCls(latest.perfRate) === 'text-green' ? 'green' : U.perfCls(latest.perfRate) === 'text-yellow' ? 'yellow' : 'red');
-    html += kpiCard('Videos Delivered', U.fmtNum(latest.delivered), latest.targetVids + ' target · ' + (latest.delRate >= 1 ? '✓ Hit' : Math.round(latest.delRate * 100) + '% of target'), latest.delRate >= 1 ? 'green' : 'orange');
-    html += kpiCard('Total Views', U.fmt$(latest.views).replace('$', ''), latest.delivered > 0 ? U.fmtNum(Math.round(latest.vpv)) + ' avg views/video' : '', 'orange');
+    html += kpiCard('Latest GMV', U.fmt$(latest.gmv), latest.period, 'green');
+    html += kpiCard('ROAS', U.fmtX(latest.roi),
+      'GMV ÷ ' + U.fmt$(totalLatestCost) + ' cost' + costSub + ' · break-even ' + U.fmtX(breakEven),
+      latest.roi >= breakEven ? 'green' : 'red');
+    html += kpiCard('Performing Creators',
+      latest.performing + ' / ' + latest.creators,
+      U.fmtPct(latest.perfRate) + ' performing rate',
+      U.perfCls(latest.perfRate) === 'text-green' ? 'green' : U.perfCls(latest.perfRate) === 'text-yellow' ? 'yellow' : 'red');
+    html += kpiCard('Videos Delivered', U.fmtNum(latest.delivered),
+      latest.targetVids + ' target · ' + (latest.delRate >= 1 ? 'hit' : Math.round(latest.delRate * 100) + '% of target'),
+      latest.delRate >= 1 ? 'green' : 'orange');
+    html += kpiCard('Median Post-to-Perf',
+      ttpMedian.value == null ? '—' : ttpMedian.value + 'd',
+      ttpMedian.note,
+      ttpMedian.value == null ? 'gray' : (ttpMedian.value <= 7 ? 'green' : ttpMedian.value <= 14 ? 'yellow' : 'orange'));
     html += '</div>';
+
+    // KPI legend
+    html += buildKPILegend(costLbl, breakEven, gm);
 
     // Charts: GMV vs Fees, ROI line, Performing Stack, Profit vs Fees
     html += '<div class="chart-grid">';
     html += '<div class="chart-card"><div class="chart-title">GMV vs ' + costLbl + ' vs Gross Profit</div><div class="chart-sub">Monthly comparison at ' + (gm * 100).toFixed(0) + '% gross margin</div><div class="chart-wrap" style="height:260px"><canvas id="agency-gmv-fees"></canvas></div></div>';
     html += '<div class="chart-card"><div class="chart-title">Performing vs Non-Performing Creators</div><div class="chart-sub">Monthly creator roster breakdown</div><div class="chart-wrap" style="height:260px"><canvas id="agency-perf-stack"></canvas></div></div>';
-    html += '<div class="chart-card"><div class="chart-title">GMV / Fee Multiple (ROI)</div><div class="chart-sub">Break-even = ' + breakEven.toFixed(2) + 'x at current margin</div><div class="chart-wrap" style="height:240px"><canvas id="agency-roi-line"></canvas></div></div>';
+    html += '<div class="chart-card"><div class="chart-title">ROAS (GMV ÷ Fees)</div><div class="chart-sub">Break-even = ' + breakEven.toFixed(2) + 'x at current margin</div><div class="chart-wrap" style="height:240px"><canvas id="agency-roi-line"></canvas></div></div>';
     html += '<div class="chart-card"><div class="chart-title">Net Profit vs ' + costLbl + '</div><div class="chart-sub">At ' + (gm * 100).toFixed(0) + '% gross margin assumption</div><div class="chart-wrap" style="height:240px"><canvas id="agency-profit-fees"></canvas></div></div>';
     html += '</div>';
 
@@ -224,7 +246,7 @@ window.Views.agency = {
       var rhtml = '';
 
       if (creators.length === 0) {
-        rhtml = '<div class="placeholder-card"><div class="ph-icon">👤</div><h3>No creator data for ' + label + '</h3><p>Add creator breakdown to <code>topCreatorsByMonth.' + label + '</code></p></div>';
+        rhtml = '<div class="placeholder-card"><h3>No creator data for ' + label + '</h3><p>Add creator breakdown to <code>topCreatorsByMonth.' + label + '</code></p></div>';
         rc.innerHTML = rhtml;
         return;
       }
@@ -248,7 +270,7 @@ window.Views.agency = {
       rhtml += '<div class="table-card"><div class="table-scroll"><table class="data-table">';
       rhtml += '<thead><tr><th>#</th><th>Creator</th><th>Username</th><th>GMV</th><th>Share of Month</th></tr></thead><tbody>';
       sorted.forEach(function (cr, i) {
-        var share = totalGMV > 0 ? (cr.gmv / totalGMV * 100).toFixed(1) + '%' : '—';
+        var share = totalGMV > 0 ? (cr.gmv / totalGMV * 100).toFixed(2) + '%' : '—';
         var rankCls = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
         rhtml += '<tr>';
         rhtml += '<td><span class="creator-rank ' + rankCls + '">' + (i + 1) + '</span></td>';
@@ -309,7 +331,7 @@ window.Views.agency = {
     var html = '<div class="tab-pane">';
 
     if (latestCreators.length === 0) {
-      html += '<div class="placeholder-card"><div class="ph-icon">📊</div><h3>Creator data needed</h3><p>Add creator breakdown to <code>topCreatorsByMonth</code> in the data file.</p></div>';
+      html += '<div class="placeholder-card"><h3>Creator data needed</h3><p>Add creator breakdown to <code>topCreatorsByMonth</code> in the data file.</p></div>';
       container.innerHTML = html + '</div>';
       return;
     }
@@ -436,7 +458,7 @@ window.Views.agency = {
     html += '<div class="table-card"><div class="table-scroll"><table class="data-table">';
     html += '<thead><tr>';
     html += '<th>Month</th><th>Period</th><th>' + costLbl + '</th><th>Sample Costs</th><th>Total Cost</th>';
-    html += '<th>GMV</th><th>Gross Profit</th><th>Net Profit</th><th>ROI Multiple</th>';
+    html += '<th>GMV</th><th>Gross Profit</th><th>Net Profit</th><th>ROAS</th>';
     html += '<th>Creators</th><th>Performing</th><th>Perf Rate</th>';
     html += '<th>Videos</th><th>Target</th><th>Del Rate</th><th>Views</th>';
     html += '<th>GMV/Video</th><th>Views/Video</th><th>GMV/Creator</th>';
@@ -501,3 +523,42 @@ window.Views.agency = {
     container.innerHTML = html;
   }
 };
+
+/* =========================================================
+   Helpers — agency TTP card + KPI legend
+   ========================================================= */
+
+// Median post-to-perform (days) for this agency's creators in the latest TikTok week.
+// Pulls from window.DATA_WEEKLY (the TikTok Performance dataset). Returns
+// { value: <days|null>, note: <subtitle string> }.
+function computeAgencyTTP(agencyId) {
+  var D = window.DATA_WEEKLY;
+  if (!D || !D.topVideos || !D.topVideos.length) {
+    return { value: null, note: 'TikTok weekly data not loaded' };
+  }
+  var ages = D.topVideos
+    .filter(function (v) { return v.agency === agencyId && v.age != null; })
+    .map(function (v) { return v.age; })
+    .sort(function (a, b) { return a - b; });
+  if (!ages.length) {
+    return { value: null, note: 'No selling videos this week' };
+  }
+  var mid = Math.floor(ages.length / 2);
+  var median = ages.length % 2 ? ages[mid] : Math.round((ages[mid - 1] + ages[mid]) / 2);
+  return {
+    value: median,
+    note: ages.length + ' selling videos this week, week of ' + (D.label || '?')
+  };
+}
+
+function buildKPILegend(costLbl, breakEven, gm) {
+  return '<div class="kpi-legend">' +
+    '<div class="kpi-legend-title">What these KPIs mean</div>' +
+    '<dl>' +
+      '<dt>Latest GMV</dt><dd>Total GMV in the agency\'s most recent reporting month.</dd>' +
+      '<dt>ROAS</dt><dd>GMV ÷ all-in agency cost (' + costLbl.toLowerCase() + ' + samples + retainers, where applicable). Break-even = ' + breakEven.toFixed(2) + 'x at ' + (gm * 100).toFixed(0) + '% gross margin.</dd>' +
+      '<dt>Performing Creators</dt><dd>Roster size and how many produced any GMV this month. Ratio is the performing rate.</dd>' +
+      '<dt>Videos Delivered</dt><dd>Shoppable videos delivered against the contracted target.</dd>' +
+      '<dt>Median Post-to-Perf</dt><dd>Median number of days from post to first GMV across this agency\'s selling videos in the most recent TikTok week. Lower = videos converting faster.</dd>' +
+    '</dl></div>';
+}
