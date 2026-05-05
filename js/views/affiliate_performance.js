@@ -258,11 +258,15 @@
       return;
     }
     var c = week.core;
+    // Defensive numeric coercion (legacy data may carry numeric strings).
+    var n = function (v) { var f = parseFloat(v); return isNaN(f) ? null : f; };
 
-    // Posting rate = creators with samples shipped & at least one video posted
-    // (we approximate from by_creator: posting_rate = videos_with_samples / samples_shipped per creator)
-    var creators = (week.by_creator || []).filter(function (r) { return (r.samples_shipped || 0) > 0; });
-    var creatorsActivated = creators.filter(function (r) { return (r.videos_with_samples || 0) > 0; }).length;
+    var samplesShipped = n(c.samples_shipped) || 0;
+    var contentCount   = n(c.content_count) || 0;
+    var contentGmv     = n(c.content_gmv) || 0;
+
+    var creators = (week.by_creator || []).filter(function (r) { return (n(r.samples_shipped) || 0) > 0; });
+    var creatorsActivated = creators.filter(function (r) { return (n(r.videos_with_samples) || 0) > 0; }).length;
     var activationRate = creators.length > 0 ? (creatorsActivated / creators.length * 100) : 0;
 
     host.innerHTML =
@@ -272,13 +276,13 @@
           ' &nbsp;·&nbsp; <a href="#" data-ap-tab="sampling" style="color:var(--brand-green);font-weight:600">Full Sampling tab →</a></span></div>' +
       '<div class="kpi-grid">' +
         kpiCard('Samples Shipped',
-          (c.samples_shipped || 0).toLocaleString(),
+          samplesShipped.toLocaleString(),
           'Drives next 7–14 days of fresh content', 'green') +
         kpiCard('Content Generated',
-          (c.content_count || 0).toLocaleString() + ' videos',
+          contentCount.toLocaleString() + ' videos',
           'From this week\'s sample wave', 'green') +
         kpiCard('Sampling-Driven GMV',
-          '$' + Math.round(c.content_gmv || 0).toLocaleString(),
+          '$' + Math.round(contentGmv).toLocaleString(),
           'GMV from sampled content', 'green') +
         kpiCard('Activation Rate',
           activationRate.toFixed(2) + '%',
@@ -1357,30 +1361,39 @@
 
   function renderSamplingHighlights(host, week) {
     var c = week.core || {};
-    var creators = (week.by_creator || []).filter(function (r) { return (r.samples_shipped || 0) > 0; });
-    var creatorsActivated = creators.filter(function (r) { return (r.videos_with_samples || 0) > 0; }).length;
+    // Defensive: parser used to emit numeric strings; coerce to be safe.
+    var n = function (v) { var f = parseFloat(v); return isNaN(f) ? null : f; };
+
+    var samplesShipped = n(c.samples_shipped) || 0;
+    var contentCount   = n(c.content_count) || 0;
+    var contentGmv     = n(c.content_gmv) || 0;
+    var estCogs        = n(c.est_cogs) || 0;
+    var estShipping    = n(c.est_shipping) || 0;
+    var roi45d         = n(c.roi_45d);
+
+    var creators = (week.by_creator || []).filter(function (r) { return (n(r.samples_shipped) || 0) > 0; });
+    var creatorsActivated = creators.filter(function (r) { return (n(r.videos_with_samples) || 0) > 0; }).length;
     var activationRate = creators.length > 0 ? (creatorsActivated / creators.length * 100) : 0;
-    var totalCost = (c.est_cogs || 0) + (c.est_shipping || 0);
-    var grossROI = totalCost > 0 ? (c.content_gmv || 0) / totalCost : null;
+    var totalCost = estCogs + estShipping;
 
     host.innerHTML = '<div class="kpi-grid">' +
       kpiCard('Samples Shipped',
-        (c.samples_shipped || 0).toLocaleString(),
+        samplesShipped.toLocaleString(),
         'Leading indicator', 'green') +
       kpiCard('Content Generated',
-        (c.content_count || 0).toLocaleString(),
+        contentCount.toLocaleString(),
         'Videos posted by sampled creators', 'green') +
       kpiCard('Sampling-Driven GMV',
-        '$' + Math.round(c.content_gmv || 0).toLocaleString(),
+        '$' + Math.round(contentGmv).toLocaleString(),
         'GMV from sampled content', 'green') +
       kpiCard('Est. Cost',
         '$' + Math.round(totalCost).toLocaleString(),
-        '$' + Math.round(c.est_cogs || 0).toLocaleString() + ' COGS + $' + Math.round(c.est_shipping || 0).toLocaleString() + ' shipping',
+        '$' + Math.round(estCogs).toLocaleString() + ' COGS + $' + Math.round(estShipping).toLocaleString() + ' shipping',
         'gray') +
       kpiCard('45-day ROI',
-        c.roi_45d != null ? c.roi_45d.toFixed(2) + 'x' : '—',
-        c.roi_45d != null && c.roi_45d >= 1 ? 'Above break-even' : 'Below break-even',
-        c.roi_45d != null && c.roi_45d >= 2 ? 'green' : c.roi_45d >= 1 ? 'yellow' : 'red') +
+        roi45d != null ? roi45d.toFixed(2) + 'x' : '—',
+        roi45d != null && roi45d >= 1 ? 'Above break-even' : 'Below break-even',
+        roi45d != null && roi45d >= 2 ? 'green' : roi45d != null && roi45d >= 1 ? 'yellow' : 'red') +
       kpiCard('Activation Rate',
         activationRate.toFixed(2) + '%',
         creatorsActivated + ' of ' + creators.length + ' shipped creators posted',

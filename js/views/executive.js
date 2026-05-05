@@ -209,7 +209,9 @@ function buildPipelineHealth(pickedWeek) {
   // sampling rollup) so it doesn't rely on manual entry. Picks the week
   // matching the active selection, else the latest sampling week.
   var samplingWeek = pickSamplingWeekForExec(pickedWeek);
-  var samplesShipped = (samplingWeek && samplingWeek.core && samplingWeek.core.samples_shipped) || null;
+  var rawShipped = samplingWeek && samplingWeek.core ? samplingWeek.core.samples_shipped : null;
+  var samplesShipped = rawShipped != null ? parseFloat(rawShipped) : null;
+  if (samplesShipped != null && isNaN(samplesShipped)) samplesShipped = null;
   var samplesContext = samplingWeek
     ? 'Week of ' + samplingWeek.label + ' · activations 7–14 days out'
     : (pickedWeek && !samplingWeek ? 'No sampling files yet for this week' : 'Sampling data not loaded');
@@ -226,7 +228,7 @@ function buildPipelineHealth(pickedWeek) {
     '<div class="kpi-grid">' +
       kpiCard('Briefs Sent', (p.briefsSent || 0).toLocaleString(), 'This week · drives next 2 weeks of new content (manual)', p.briefsSent > 0 ? 'green' : 'gray') +
       kpiCard('Samples Shipped',
-        samplesShipped != null ? samplesShipped.toLocaleString() : '—',
+        samplesShipped != null ? Math.round(samplesShipped).toLocaleString() : '—',
         samplesContext,
         samplesColor) +
       kpiCard('Creators Onboarding', (p.creatorsOnboarding || 0).toLocaleString(), 'Signed, not yet posting (manual)', p.creatorsOnboarding > 0 ? 'green' : 'gray') +
