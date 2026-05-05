@@ -35,6 +35,7 @@
     { id: 'summary',     label: 'Summary' },
     { id: 'creators',    label: 'Creators' },
     { id: 'videos',      label: 'Videos' },
+    { id: 'sampling',    label: 'Sampling' },
     { id: 'diagnostics', label: 'Diagnostics' }
     // Economics intentionally omitted — channel-level profit/CM lives in the
     // separate TikTok performance dashboard alongside Forecasting.
@@ -183,6 +184,7 @@
       case 'summary':     return renderSummary(body);
       case 'creators':    return renderCreators(body);
       case 'videos':      return renderVideos(body);
+      case 'sampling':    return renderSampling(body);
       case 'diagnostics': return renderDiagnostics(body);
     }
   }
@@ -197,7 +199,8 @@
       '<div id="ap-summary-section"></div>' +
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Age Cohorts</span>' +
         '<span class="section-meta">Distribution of weekly GMV by video age</span></div>' +
-      '<div id="ap-summary-cohorts"></div>';
+      '<div id="ap-summary-cohorts"></div>' +
+      '<div id="ap-summary-sampling"></div>';
 
     // Render the weekly Summary KPI strip via weekly.js
     var section = document.getElementById('ap-summary-section');
@@ -213,6 +216,10 @@
     // Age Cohorts panel — gives a fast read of where weekly GMV is concentrated by video age.
     renderAgeCohorts(document.getElementById('ap-summary-cohorts'));
 
+    // Sampling top view — quick read of this week's sample-program activity
+    // with a deep-link to the full Sampling tab.
+    renderSamplingTop(document.getElementById('ap-summary-sampling'));
+
     // When a specific agency is filtered, append a per-agency monthly
     // context card so weekly TikTok data is grounded in contract context.
     if (state.source !== 'all' && state.source !== 'unattributed') {
@@ -220,97 +227,124 @@
     }
   }
 
+  // Sampling top view for the Summary tab. Compact 4-card strip + deep-link.
+  function renderSamplingTop(host) {
+    if (!host) return;
+    var sampling = window.SAMPLING;
+    if (!sampling || !sampling.weeks || !sampling.weeks.length) {
+      host.innerHTML = '';
+      return;
+    }
+    var week = pickSamplingWeek(sampling);
+    if (!week || !week.core) { host.innerHTML = ''; return; }
+    var c = week.core;
+
+    // Posting rate = creators with samples shipped & at least one video posted
+    // (we approximate from by_creator: posting_rate = videos_with_samples / samples_shipped per creator)
+    var creators = (week.by_creator || []).filter(function (r) { return (r.samples_shipped || 0) > 0; });
+    var creatorsActivated = creators.filter(function (r) { return (r.videos_with_samples || 0) > 0; }).length;
+    var activationRate = creators.length > 0 ? (creatorsActivated / creators.length * 100) : 0;
+
+    host.innerHTML =
+      '<div class="section-header" style="margin-top:32px">' +
+        '<span class="section-title">Sampling</span>' +
+        '<span class="section-meta">Week of ' + escapeHtml(week.label) +
+          ' &nbsp;·&nbsp; <a href="#" data-ap-tab="sampling" style="color:var(--brand-green);font-weight:600">Full Sampling tab →</a></span></div>' +
+      '<div class="kpi-grid">' +
+        kpiCard('Samples Shipped',
+          (c.samples_shipped || 0).toLocaleString(),
+          'Drives next 7–14 days of fresh content', 'green') +
+        kpiCard('Content Generated',
+          (c.content_count || 0).toLocaleString() + ' videos',
+          'From this week\'s sample wave', 'green') +
+        kpiCard('Sampling-Driven GMV',
+          '$' + Math.round(c.content_gmv || 0).toLocaleString(),
+          'GMV from sampled content', 'green') +
+        kpiCard('Activation Rate',
+          activationRate.toFixed(2) + '%',
+          creatorsActivated + ' of ' + creators.length + ' shipped creators posted',
+          activationRate >= 60 ? 'green' : activationRate >= 40 ? 'yellow' : 'red') +
+      '</div>';
+
+    // Wire deep-link to switch active sub-tab
+    var deepLinkBtn = host.querySelector('[data-ap-tab]');
+    if (deepLinkBtn) {
+      deepLinkBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        state.tab = 'sampling';
+        render();
+      });
+    }
+  }
+
+  // 2026-05 weekly-mode: per-agency context shows weekly performance from
+  // DATA_WEEKLY.agencyRollup + a weekly fee proxy (monthly contract ÷ 4).
+  // Old monthly-contract drilldown is dropped per Liam's direction.
   function appendAgencyMonthlyContext(host, agencyId) {
-    var raw = U.getAgencyData(agencyId);
-    if (!raw || !raw.months || !raw.months.length) return;
-    var months = U.enrichAll(raw);
-    var latest = months[months.length - 1];
+    var D = window.DATA_WEEKLY;
+    if (!D || !D.agencyRollup) return;
+    var weekly = D.agencyRollup.find(function (r) { return r.Agency === agencyId; });
+    if (!weekly) return;
     var agCfg = U.getAgencyConfig(agencyId);
+
+    // Weekly fee proxy: monthly cost (fees + samples) ÷ 4.
+    // Pull the latest monthly entry from the agency data file as the source.
+    var raw = U.getAgencyData(agencyId);
+    var weeklyFeeProxy = null, monthlySource = null;
+    if (raw && raw.months && raw.months.length) {
+      var months = U.enrichAll(raw);
+      monthlySource = months[months.length - 1];
+      weeklyFeeProxy = (monthlySource.totalCost || 0) / 4;
+    }
+
+    // Weekly ROAS proxy
+    var weeklyROAS = (weeklyFeeProxy && weeklyFeeProxy > 0) ? (weekly.gmv || 0) / weeklyFeeProxy : null;
     var breakEven = U.getBreakEven();
 
-    // Contract Pacing — projects month-end based on weeks elapsed in the period.
-    // Period strings vary in shape, so this is best-effort: if we can't parse
-    // the period, the projection card just shows raw delivered/target.
-    var pacing = computeContractPacing(latest);
+    var wowDir = (weekly.wow_dollar || 0) >= 0 ? 'green' : 'red';
+    var wowSign = (weekly.wow_dollar || 0) >= 0 ? '+' : '−';
+    var wowSub = weekly.wow_pct != null
+      ? wowSign + '$' + Math.abs(Math.round(weekly.wow_dollar || 0)).toLocaleString() +
+        ' (' + (weekly.wow_pct >= 0 ? '+' : '') + weekly.wow_pct.toFixed(2) + '% WoW)'
+      : 'baseline';
 
     var ctx = document.createElement('div');
     ctx.style.marginTop = '24px';
     ctx.innerHTML =
-      '<div class="section-header"><span class="section-title">Monthly Contract Context · ' + escapeHtml(agCfg.short) + '</span>' +
-        '<span class="section-meta">' + escapeHtml(latest.period || latest.label) + '</span></div>' +
+      '<div class="section-header"><span class="section-title">Weekly Performance · ' + escapeHtml(agCfg.short) + '</span>' +
+        '<span class="section-meta">Week of ' + escapeHtml(D.label || '?') + '</span></div>' +
       '<div class="kpi-grid">' +
-        kpiCard('Latest Monthly GMV', U.fmt$(latest.gmv), latest.label, 'green') +
-        kpiCard('Latest Monthly ROAS', U.fmtX(latest.roi),
-          'GMV ÷ ' + U.fmt$(latest.totalCost) + ' all-in cost · break-even ' + U.fmtX(breakEven),
-          latest.roi >= breakEven ? 'green' : 'red') +
-        kpiCard('Performing Creators',
-          (latest.performing || 0) + ' / ' + (latest.creators || 0),
-          U.fmtPct(latest.perfRate) + ' performing rate', 'orange') +
-        kpiCard('Videos Delivered',
-          U.fmtNum(latest.delivered),
-          (latest.targetVids || 0) + ' target · ' +
-          (latest.delRate >= 1 ? 'hit' : Math.round((latest.delRate || 0) * 100) + '% of target'),
-          latest.delRate >= 1 ? 'green' : 'orange') +
-        kpiCard('Contract Pacing',
-          pacing.label,
-          pacing.detail,
-          pacing.color) +
-      '</div>';
+        kpiCard('Weekly GMV',
+          '$' + Math.round(weekly.gmv || 0).toLocaleString(),
+          wowSub, wowDir) +
+        kpiCard('Weekly ROAS (proxy)',
+          weeklyROAS != null ? U.fmtX(weeklyROAS) : '—',
+          weeklyFeeProxy != null
+            ? 'GMV ÷ $' + Math.round(weeklyFeeProxy).toLocaleString() + '/wk fee proxy (monthly ÷ 4)'
+            : 'No monthly fee data',
+          weeklyROAS != null && weeklyROAS >= breakEven ? 'green' : 'red') +
+        kpiCard('Selling Creators',
+          (weekly.creators || 0).toLocaleString(),
+          (weekly.roster_size || 0) + ' on roster', 'orange') +
+        kpiCard('Selling Videos',
+          (weekly.selling_videos || 0).toLocaleString(),
+          'New ≤14d: ' + (weekly.new_videos || 0) + ' · Legacy >30d: ' + (weekly.legacy_videos || 0),
+          'green') +
+      '</div>' +
+      (monthlySource
+        ? '<div class="info-notice" style="margin-top:-8px;font-size:11px">' +
+          'Weekly fee proxy is monthly ' + escapeHtml(monthlySource.label || '') + ' cost ($' +
+          Math.round(monthlySource.totalCost || 0).toLocaleString() + ') ÷ 4. ' +
+          'Updates each Monday refresh.</div>'
+        : '');
     host.appendChild(ctx);
   }
 
-  // Best-effort contract-pacing projection. Pulls the days-elapsed % from the
-  // period string when possible and projects month-end delivered. Falls back
-  // gracefully when period isn't a standard date range.
-  function computeContractPacing(latest) {
-    var delivered = latest.delivered || 0;
-    var target = latest.targetVids || 0;
-    if (!target) {
-      return { label: '—', detail: 'No video target set for this contract month', color: 'gray' };
-    }
-    // Try to parse start–end from period string. Examples we've seen:
-    //   "Apr 27–May 31"   "Mar 23–Apr 26"   "Feb 16–Mar 22"
-    //   "Jan 1–31 2025"   "Nov 1–30 2024"
-    var period = latest.period || '';
-    var elapsed = null;
-    try {
-      // crude heuristic: assume the contract is 30 days, days elapsed = today − start
-      var match = period.match(/([A-Za-z]+)\s+(\d+)/);  // first month/day
-      if (match) {
-        var monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
-        var m = monthMap[match[1].slice(0, 3)];
-        var d = parseInt(match[2], 10);
-        if (m != null) {
-          var now = new Date();
-          var start = new Date(now.getFullYear(), m, d);
-          // adjust if the period straddles year boundary
-          if (start > now) start.setFullYear(start.getFullYear() - 1);
-          var daysSince = Math.floor((now - start) / 86400000);
-          if (daysSince >= 0 && daysSince < 60) elapsed = daysSince;
-        }
-      }
-    } catch (_) {}
-
-    if (elapsed == null) {
-      // Fallback: just show raw progress as % of target
-      var pct = Math.round(delivered / target * 100);
-      return {
-        label: pct + '% of target',
-        detail: delivered + ' delivered of ' + target + ' contracted',
-        color: pct >= 100 ? 'green' : pct >= 80 ? 'yellow' : 'red'
-      };
-    }
-    // Project to month-end (assume 30-day contract)
-    var contractDays = 30;
-    var fractionElapsed = Math.min(1, elapsed / contractDays);
-    var projected = fractionElapsed > 0 ? Math.round(delivered / fractionElapsed) : delivered;
-    var projectedPct = Math.round(projected / target * 100);
-
-    return {
-      label: 'Day ' + elapsed + ' of ' + contractDays,
-      detail: delivered + ' of ' + target + ' delivered (' + Math.round(delivered / target * 100) + '%) · projected ' + projected + ' (' + projectedPct + '% of target)',
-      color: projectedPct >= 100 ? 'green' : projectedPct >= 80 ? 'yellow' : 'red'
-    };
+  /* (Removed: computeContractPacing — monthly contract pacing dropped per
+     the 2026-05 weekly-mode pivot. Per-agency drilldown now reads from
+     DATA_WEEKLY.agencyRollup with a weekly fee proxy (monthly cost ÷ 4). */
+  function _removed_computeContractPacing() {
+    return { label: '—', detail: '', color: 'gray' };
   }
 
   /* ───────────────────────────────────────────────────
@@ -1234,6 +1268,210 @@
      not part of this dashboard. It lives in the separate TikTok performance
      project alongside Forecasting. The data scaffolding (DASHBOARD_DATA.profitability)
      is still loaded in case we need a quick read, but no UI surfaces it here. */
+
+  /* ───────────────────────────────────────────────────
+     Tab — SAMPLING
+     Reads window.SAMPLING.weeks[] and renders the active week's
+     core metrics + per-creator + per-product detail.
+     Honors the active app-level time range (Latest / Custom).
+     ─────────────────────────────────────────────────── */
+  function renderSampling(host) {
+    var sampling = window.SAMPLING;
+    if (!sampling || !sampling.weeks || !sampling.weeks.length) {
+      host.innerHTML = '<div class="placeholder-card">' +
+        '<h3>Sampling data not loaded</h3>' +
+        '<p>Re-run <code>pipeline/parsers/sampling.py</code> to regenerate <code>web/data/sampling.js</code>.</p>' +
+        '</div>';
+      return;
+    }
+
+    var week = pickSamplingWeek(sampling);
+    if (!week) {
+      host.innerHTML = '<div class="placeholder-card"><h3>No sampling data for the selected week</h3>' +
+        '<p>Switch to "Latest week" or pick a different custom range.</p></div>';
+      return;
+    }
+
+    host.innerHTML =
+      '<div class="section-header"><span class="section-title">Highlights</span>' +
+        '<span class="section-meta">Week of ' + escapeHtml(week.label) +
+          ' (' + escapeHtml(week.start) + ' – ' + escapeHtml(week.end) + ')</span></div>' +
+      '<div id="ap-sampling-highlights"></div>' +
+
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">By Product</span>' +
+        '<span class="section-meta">Sample shipments + content GMV per SKU</span></div>' +
+      '<div id="ap-sampling-products"></div>' +
+
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Top Creators by Sampling-Driven GMV</span>' +
+        '<span class="section-meta">10 per page · ranked by content GMV</span></div>' +
+      '<div id="ap-sampling-creators"></div>' +
+
+      '<div class="kpi-legend" style="margin-top:24px">' +
+        '<div class="kpi-legend-title">What this view shows</div>' +
+        '<dl>' +
+          '<dt>Samples Shipped</dt><dd>Total samples sent to creators in this reporting week. Leading indicator — drives the next 7–14 days of fresh content.</dd>' +
+          '<dt>Content Generated</dt><dd>Videos posted by creators who received samples in this week.</dd>' +
+          '<dt>Sampling-Driven GMV</dt><dd>GMV attributed to videos in the sampling-attributed set for this week.</dd>' +
+          '<dt>Est. COGS / Shipping</dt><dd>Cost-of-goods + shipping spent on this week\'s sample wave. The denominator of sample ROI.</dd>' +
+          '<dt>45-day ROI</dt><dd>Sampling-driven GMV ÷ (sample COGS + shipping) over a 45-day attribution window. The single number that says whether the sampling program is paying for itself.</dd>' +
+          '<dt>Activation Rate</dt><dd>Of creators who received samples, the share who posted ≥1 video with that sample.</dd>' +
+        '</dl></div>';
+
+    renderSamplingHighlights(document.getElementById('ap-sampling-highlights'), week);
+    renderSamplingProducts(document.getElementById('ap-sampling-products'), week);
+    renderSamplingCreators(document.getElementById('ap-sampling-creators'), week);
+  }
+
+  function renderSamplingHighlights(host, week) {
+    var c = week.core || {};
+    var creators = (week.by_creator || []).filter(function (r) { return (r.samples_shipped || 0) > 0; });
+    var creatorsActivated = creators.filter(function (r) { return (r.videos_with_samples || 0) > 0; }).length;
+    var activationRate = creators.length > 0 ? (creatorsActivated / creators.length * 100) : 0;
+    var totalCost = (c.est_cogs || 0) + (c.est_shipping || 0);
+    var grossROI = totalCost > 0 ? (c.content_gmv || 0) / totalCost : null;
+
+    host.innerHTML = '<div class="kpi-grid">' +
+      kpiCard('Samples Shipped',
+        (c.samples_shipped || 0).toLocaleString(),
+        'Leading indicator', 'green') +
+      kpiCard('Content Generated',
+        (c.content_count || 0).toLocaleString(),
+        'Videos posted by sampled creators', 'green') +
+      kpiCard('Sampling-Driven GMV',
+        '$' + Math.round(c.content_gmv || 0).toLocaleString(),
+        'GMV from sampled content', 'green') +
+      kpiCard('Est. Cost',
+        '$' + Math.round(totalCost).toLocaleString(),
+        '$' + Math.round(c.est_cogs || 0).toLocaleString() + ' COGS + $' + Math.round(c.est_shipping || 0).toLocaleString() + ' shipping',
+        'gray') +
+      kpiCard('45-day ROI',
+        c.roi_45d != null ? c.roi_45d.toFixed(2) + 'x' : '—',
+        c.roi_45d != null && c.roi_45d >= 1 ? 'Above break-even' : 'Below break-even',
+        c.roi_45d != null && c.roi_45d >= 2 ? 'green' : c.roi_45d >= 1 ? 'yellow' : 'red') +
+      kpiCard('Activation Rate',
+        activationRate.toFixed(2) + '%',
+        creatorsActivated + ' of ' + creators.length + ' shipped creators posted',
+        activationRate >= 60 ? 'green' : activationRate >= 40 ? 'yellow' : 'red') +
+    '</div>';
+  }
+
+  function renderSamplingProducts(host, week) {
+    var rows = (week.by_product || []).slice();
+    if (!rows.length) { host.innerHTML = '<div class="info-notice">No per-product data for this week.</div>'; return; }
+    var totalGMV = rows.reduce(function (s, r) { return s + (r.content_gmv || 0); }, 0);
+
+    var html = '<div class="table-card"><div class="table-scroll"><table class="data-table">' +
+      '<thead><tr>' +
+        '<th style="text-align:left">Product</th>' +
+        '<th>Samples Requested</th>' +
+        '<th>Samples Shipped</th>' +
+        '<th>Content GMV</th>' +
+        '<th>Share</th>' +
+        '<th>Refunds</th>' +
+      '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      var share = totalGMV > 0 ? ((r.content_gmv || 0) / totalGMV * 100).toFixed(2) + '%' : '—';
+      html += '<tr>' +
+        '<td style="text-align:left"><strong>' + escapeHtml(r.product_name || '—') + '</strong></td>' +
+        '<td>' + (r.samples_requested || 0).toLocaleString() + '</td>' +
+        '<td>' + (r.samples_shipped || 0).toLocaleString() + '</td>' +
+        '<td>$' + Math.round(r.content_gmv || 0).toLocaleString() + '</td>' +
+        '<td>' + share + '</td>' +
+        '<td>$' + Math.round(r.refunds || 0).toLocaleString() + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    host.innerHTML = html;
+  }
+
+  function renderSamplingCreators(host, week) {
+    var rows = (week.by_creator || []).slice()
+      .filter(function (r) { return (r.content_gmv || 0) > 0 || (r.samples_shipped || 0) > 0; })
+      .sort(function (a, b) { return (b.content_gmv || 0) - (a.content_gmv || 0); });
+    if (!rows.length) { host.innerHTML = '<div class="info-notice">No per-creator data for this week.</div>'; return; }
+
+    var page = state._samplingPage || 0;
+    var totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    if (page >= totalPages) page = 0;
+
+    var slice = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    var startRank = page * PAGE_SIZE + 1;
+
+    var html = '<div class="table-card"><div class="table-scroll"><table class="data-table">' +
+      '<thead><tr>' +
+        '<th style="text-align:left">#</th>' +
+        '<th style="text-align:left">Creator</th>' +
+        '<th>Content GMV</th>' +
+        '<th>Samples Requested</th>' +
+        '<th>Samples Shipped</th>' +
+        '<th>Videos with Samples</th>' +
+        '<th>Posting Rate</th>' +
+      '</tr></thead><tbody>';
+    slice.forEach(function (r, i) {
+      var posting = r.posting_rate;
+      var postingTxt = (posting == null) ? '—'
+        : (typeof posting === 'number' && posting <= 1) ? (posting * 100).toFixed(2) + '%'
+        : (typeof posting === 'number' ? posting.toFixed(2) + '%' : String(posting));
+      html += '<tr>' +
+        '<td style="text-align:left">' + (startRank + i) + '</td>' +
+        '<td style="text-align:left">@' + escapeHtml(r.creator_name || '—') + '</td>' +
+        '<td><strong>$' + Math.round(r.content_gmv || 0).toLocaleString() + '</strong></td>' +
+        '<td>' + (r.samples_requested || 0).toLocaleString() + '</td>' +
+        '<td>' + (r.samples_shipped || 0).toLocaleString() + '</td>' +
+        '<td>' + (r.videos_with_samples || 0).toLocaleString() + '</td>' +
+        '<td>' + postingTxt + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    html += buildSamplingPager(page, totalPages, rows.length);
+    host.innerHTML = html;
+
+    host.querySelectorAll('[data-spage]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state._samplingPage = parseInt(btn.getAttribute('data-spage'), 10);
+        renderSamplingCreators(host, week);
+      });
+    });
+  }
+
+  function buildSamplingPager(page, totalPages, totalCount) {
+    if (totalCount === 0) return '';
+    if (totalPages <= 1) {
+      return '<div class="ap-pager"><span class="ap-pager-info">' + totalCount + ' total · 1 page</span></div>';
+    }
+    var html = '<div class="ap-pager">';
+    html += '<span class="ap-pager-info">' +
+      ((page * PAGE_SIZE) + 1) + '–' + Math.min((page + 1) * PAGE_SIZE, totalCount) + ' of ' + totalCount + '</span>';
+    html += '<div class="ap-pager-pages">';
+    // For potentially long lists, cap visible page buttons to first 10 + last
+    var pagesToShow = Math.min(totalPages, 12);
+    for (var i = 0; i < pagesToShow; i++) {
+      html += '<button class="ap-pager-btn ' + (i === page ? 'active' : '') + '" data-spage="' + i + '">' + (i + 1) + '</button>';
+    }
+    if (totalPages > 12) {
+      html += '<span style="padding:0 6px;color:var(--gray-500);font-size:13px">…</span>';
+      html += '<button class="ap-pager-btn ' + (totalPages - 1 === page ? 'active' : '') + '" data-spage="' + (totalPages - 1) + '">' + totalPages + '</button>';
+    }
+    html += '</div></div>';
+    return html;
+  }
+
+  // Pick the active sampling week based on app-level state (timeRange + customFrom).
+  // Returns null if state.timeRange === 'custom' and the picked week isn't in the dataset.
+  function pickSamplingWeek(sampling) {
+    var weeks = sampling.weeks || [];
+    if (!weeks.length) return null;
+
+    var appState = window._appState || {};
+    var timeRange = appState.timeRange || 'latest';
+    var customFrom = appState.customFrom || null;
+
+    if (timeRange === 'custom' && customFrom) {
+      var match = weeks.find(function (w) { return w.start === customFrom; });
+      if (match) return match;
+    }
+    return weeks[weeks.length - 1];
+  }
 
   window.Views = window.Views || {};
   window.Views.affiliate_performance = { render: render };

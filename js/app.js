@@ -35,13 +35,20 @@
 (function () {
 
   /* ── State ── */
+  // 2026-05 simplification: dropped Daily / Monthly. The dashboard operates on
+  // weekly cadence (Mon–Sun) only. Custom range picks specific weekly buckets
+  // from window.SAMPLING.weeks (Mar 2 – May 3, 2026 currently).
   var state = {
-    view:         'executive',    // 'executive' | agency id
-    timeRange:    'monthly',      // 'daily' | 'weekly' | 'monthly' | 'custom'
+    view:         'executive',
+    timeRange:    'latest',       // 'latest' | 'custom'
     grossMargin:  CONFIG.grossMargin,
-    customFrom:   null,
-    customTo:     null
+    customFrom:   null,            // ISO start date (Mon)
+    customTo:     null             // ISO end date (Sun)
   };
+
+  // Expose app-level state to other view modules so they can react to time-range
+  // changes (e.g. the Sampling tab picks the active week from this).
+  window._appState = state;
 
   /* ── Chart.js Global Defaults ── */
   function applyChartDefaults() {
@@ -103,35 +110,34 @@
     });
   }
 
-  /* ── Build time filter bar ── */
+  /* ── Build time filter bar ──
+     Simplified to weekly-only. "Latest" = most recent reporting week (default).
+     "Custom" lets the user pick any weekly bucket (Mon–Sun) we have data for.
+     The list of available weeks is derived from window.SAMPLING.weeks since
+     that's the single dataset that spans the full Mar 2 – May 3 range. */
   function buildTimeFilter() {
     var bar = document.getElementById('time-filter');
     if (!bar) return;
 
-    // Build month options for custom range picker
-    var allMonthOpts = '';
-    CONFIG.agencies.forEach(function (ag) {
-      var raw = U.getAgencyData(ag.id);
-      if (raw && raw.months) {
-        raw.months.forEach(function (m, i) {
-          var lbl = (m.label || ('M' + (i + 1))) + ' (' + ag.short + ')';
-          allMonthOpts += '<option value="' + ag.id + '-' + (m.label || ('M' + (i + 1))) + '">' + lbl + '</option>';
-        });
-      }
-    });
+    var weeks = (window.SAMPLING && window.SAMPLING.weeks) ? window.SAMPLING.weeks : [];
+    var latest = weeks.length ? weeks[weeks.length - 1] : null;
+
+    var weekOpts = weeks.map(function (w) {
+      return '<option value="' + w.start + '">' + w.label + '  (' + w.start + ' – ' + w.end + ')</option>';
+    }).join('');
 
     bar.innerHTML =
       '<span class="tf-label">Period</span>' +
-      '<button class="tf-btn" data-range="daily">Daily</button>' +
-      '<button class="tf-btn" data-range="weekly">Weekly</button>' +
-      '<button class="tf-btn active" data-range="monthly">Monthly</button>' +
+      '<button class="tf-btn ' + (state.timeRange === 'latest' ? 'active' : '') + '" data-range="latest">' +
+        'Latest week' + (latest ? ' · ' + latest.label : '') +
+      '</button>' +
       '<div class="tf-separator"></div>' +
-      '<button class="tf-btn" data-range="custom">Custom Range</button>' +
-      '<div id="custom-range-wrap" style="display:none" class="custom-range-picker">' +
+      '<button class="tf-btn ' + (state.timeRange === 'custom' ? 'active' : '') + '" data-range="custom">Custom week</button>' +
+      '<div id="custom-range-wrap" style="display:' + (state.timeRange === 'custom' ? 'flex' : 'none') + '" class="custom-range-picker">' +
         '<label>From:</label>' +
-        '<select id="custom-from">' + allMonthOpts + '</select>' +
+        '<select id="custom-from">' + weekOpts + '</select>' +
         '<label>To:</label>' +
-        '<select id="custom-to">' + allMonthOpts + '</select>' +
+        '<select id="custom-to">' + weekOpts + '</select>' +
         '<button class="btn btn-primary" id="apply-custom" style="padding:4px 12px;font-size:12px">Apply</button>' +
       '</div>';
 
@@ -139,15 +145,15 @@
       btn.addEventListener('click', function () {
         var range = btn.getAttribute('data-range');
         state.timeRange = range;
-
-        // Update active state
         bar.querySelectorAll('.tf-btn').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-
         var customWrap = document.getElementById('custom-range-wrap');
         if (customWrap) customWrap.style.display = range === 'custom' ? 'flex' : 'none';
-
-        if (range !== 'custom') rerender();
+        if (range === 'latest') {
+          state.customFrom = null;
+          state.customTo = null;
+          rerender();
+        }
       });
     });
 
@@ -183,17 +189,9 @@
     // Kill all chart instances before re-render
     Object.keys(Charts.instances).forEach(function (id) { Charts.kill(id); });
 
-    // Weekly time-range jumps straight into the affiliate engine.
-    if (state.timeRange === 'weekly') {
-      Views.affiliate_performance.render();
-      return;
-    }
-    // Daily surfaces the placeholder (no daily-level data wired yet)
-    if (state.timeRange === 'daily') {
-      renderTimePlaceholder(state.timeRange);
-      return;
-    }
-
+    // Time range is weekly-only post-2026-05 (Latest or Custom). The active
+    // view dictates the surface; the time range only changes which week's
+    // data each surface reads from.
     if (state.view === 'executive') {
       Views.executive.render();
     } else if (state.view === 'affiliate_performance') {
@@ -208,22 +206,7 @@
     }
   }
 
-  /* ── Placeholder for daily/weekly ── */
-  function renderTimePlaceholder(range) {
-    var main = document.getElementById('main-content');
-    if (!main) return;
-
-    var label = range === 'daily' ? 'Daily' : 'Weekly';
-    main.innerHTML =
-      '<div class="placeholder-card" style="margin-top:60px">' +
-        '<h3>' + label + ' view requires video-level data</h3>' +
-        '<p>' +
-          'Video-level daily data required. Export from TikTok Shop Creator Center, ' +
-          'or connect the Cruva API in <code>js/config.js</code> to populate this view automatically.' +
-        '</p>' +
-        '<p style="margin-top:12px">Switch to <strong>Monthly</strong> to view current aggregated data.</p>' +
-      '</div>';
-  }
+  /* (Removed: daily/monthly placeholders — dashboard is weekly-only post-2026-05.) */
 
   /* ── Initialise the application ── */
   function init() {
