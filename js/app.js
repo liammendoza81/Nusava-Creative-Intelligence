@@ -110,20 +110,86 @@
     });
   }
 
-  /* ── Build time filter bar ──
-     Simplified to weekly-only. "Latest" = most recent reporting week (default).
-     "Custom" lets the user pick any weekly bucket (Mon–Sun) we have data for.
-     The list of available weeks is derived from window.SAMPLING.weeks since
-     that's the single dataset that spans the full Mar 2 – May 3 range. */
+  /* Compute the union of available weekly buckets. Each entry:
+     { start, end, label, hasSampling, summaryRow }.
+     Sorted chronologically. Anchored on the sampling parser's start dates;
+     weekly_summary rows that don't appear in sampling are appended using
+     their date_range to derive the start/end. */
+  function collectAvailableWeeks() {
+    var samplingWeeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
+    var summaryRows = (window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary && window.DASHBOARD_DATA.weekly_summary.rows) || [];
+    var byStart = {};
+
+    // Seed with sampling weeks (always have full week metadata)
+    samplingWeeks.forEach(function (w, i) {
+      byStart[w.start] = {
+        start: w.start, end: w.end, label: w.label,
+        hasSampling: true,
+        summaryRow: summaryRows[i] || null
+      };
+    });
+
+    // Add any summary rows that don't have a matching sampling start.
+    // We assume sampling[0] aligns with summary[0] chronologically and step forward.
+    summaryRows.forEach(function (row, i) {
+      // Sampling-aligned rows already added above (matched by index)
+      var matchingSampling = samplingWeeks[i];
+      if (matchingSampling) return;
+      // No sampling at this index → derive start/end from row.date_range or
+      // just label by week_id. This handles "Apr 27 – May 3" appearing as
+      // weekly_summary W9 without a matching sampling file.
+      var derived = deriveWeekFromSummary(row, i, samplingWeeks);
+      if (!derived) return;
+      byStart[derived.start] = {
+        start: derived.start, end: derived.end, label: derived.label,
+        hasSampling: false,
+        summaryRow: row
+      };
+    });
+
+    // Return chronologically sorted
+    return Object.values(byStart).sort(function (a, b) {
+      return a.start.localeCompare(b.start);
+    });
+  }
+
+  /* If sampling has 8 weeks ending Apr 26 and weekly_summary has 9 weeks,
+     the 9th summary row is one week LATER than the last sampling week.
+     Compute its Mon–Sun ISO range by adding 7 days to the prior sampling's end. */
+  function deriveWeekFromSummary(row, idx, samplingWeeks) {
+    if (samplingWeeks.length === 0) {
+      // No sampling at all — fall back to row.week_id with no date math
+      return {
+        start: '0000-' + String(idx).padStart(4, '0'),
+        end:   '0000-' + String(idx).padStart(4, '0'),
+        label: row.date_range || row.week_id || row.week || ('Week ' + (idx + 1))
+      };
+    }
+    // Step forward from the last sampling week by (idx - lastSamplingIdx) weeks
+    var anchor = samplingWeeks[samplingWeeks.length - 1];
+    var stepsForward = idx - (samplingWeeks.length - 1);
+    if (stepsForward <= 0) return null; // shouldn't happen since we skipped matches above
+    var anchorEnd = new Date(anchor.end + 'T00:00:00');
+    var newStart = new Date(anchorEnd); newStart.setDate(newStart.getDate() + 1 + (stepsForward - 1) * 7);
+    var newEnd = new Date(newStart); newEnd.setDate(newEnd.getDate() + 6);
+    function fmt(d) { return d.toISOString().slice(0, 10); }
+    var label = (row.date_range || '').trim()
+      || (newStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + '–' +
+          newEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    return { start: fmt(newStart), end: fmt(newEnd), label: label };
+  }
+
+  /* ── Build time filter bar ── */
   function buildTimeFilter() {
     var bar = document.getElementById('time-filter');
     if (!bar) return;
 
-    var weeks = (window.SAMPLING && window.SAMPLING.weeks) ? window.SAMPLING.weeks : [];
-    var latest = weeks.length ? weeks[weeks.length - 1] : null;
+    var availableWeeks = collectAvailableWeeks();
+    var latest = availableWeeks.length ? availableWeeks[availableWeeks.length - 1] : null;
 
-    var weekOpts = weeks.map(function (w) {
-      return '<option value="' + w.start + '">' + w.label + '  (' + w.start + ' – ' + w.end + ')</option>';
+    var weekOpts = availableWeeks.map(function (w) {
+      var marker = w.hasSampling ? '' : '  · no sampling';
+      return '<option value="' + w.start + '">' + w.label + marker + '</option>';
     }).join('');
 
     bar.innerHTML =

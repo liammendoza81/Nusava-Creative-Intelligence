@@ -236,7 +236,27 @@
       return;
     }
     var week = pickSamplingWeek(sampling);
-    if (!week || !week.core) { host.innerHTML = ''; return; }
+    if (!week || !week.core) {
+      // Selected week has no sampling data — show a quiet notice with a link
+      // to the latest sampling week so the user knows what's available.
+      var picked = (window._appState || {});
+      var pickedLabel = picked.customFrom || '';
+      var latestSampling = sampling.weeks[sampling.weeks.length - 1];
+      host.innerHTML =
+        '<div class="section-header" style="margin-top:32px">' +
+          '<span class="section-title">Sampling</span>' +
+          '<span class="section-meta">No sampling data' + (pickedLabel ? ' for ' + escapeHtml(pickedLabel) : '') +
+            ' &nbsp;·&nbsp; <a href="#" data-ap-tab="sampling" style="color:var(--brand-green);font-weight:600">Latest available: ' + escapeHtml(latestSampling.label) + ' →</a></span></div>';
+      var deepLinkBtn = host.querySelector('[data-ap-tab]');
+      if (deepLinkBtn) {
+        deepLinkBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          state.tab = 'sampling';
+          render();
+        });
+      }
+      return;
+    }
     var c = week.core;
 
     // Posting rate = creators with samples shipped & at least one video posted
@@ -1287,8 +1307,21 @@
 
     var week = pickSamplingWeek(sampling);
     if (!week) {
-      host.innerHTML = '<div class="placeholder-card"><h3>No sampling data for the selected week</h3>' +
-        '<p>Switch to "Latest week" or pick a different custom range.</p></div>';
+      // Picked a custom week that doesn't have sampling files yet (e.g. the
+      // most recent week before sampling exports are uploaded). Show a clean
+      // empty state instead of failing.
+      var picked = (window._appState || {});
+      var pickedLabel = picked.customFrom || 'this week';
+      host.innerHTML =
+        '<div class="placeholder-card">' +
+          '<h3>No sampling data for ' + escapeHtml(pickedLabel) + '</h3>' +
+          '<p>Sampling files for this week haven\'t been uploaded to ' +
+          '<code>03_TikTok/Performance Reporting/Sampling/</code> yet. ' +
+          'Other tabs (Summary, Creators, Videos, Diagnostics) still show this week\'s data.</p>' +
+          '<p style="margin-top:12px">Most recent sampling week: <strong>' +
+          escapeHtml(sampling.weeks[sampling.weeks.length - 1].label) + '</strong> — ' +
+          'switch to "Latest week" or pick a custom week within that range.</p>' +
+        '</div>';
       return;
     }
 
