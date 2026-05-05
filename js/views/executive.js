@@ -27,6 +27,9 @@ window.Views.executive = {
     /* ── Pull data ── */
     var agencyData = computeAgencyAggregates();
     var weekly = window.DATA_WEEKLY || null;
+    // Resolve the active week from app state. Returns the matching weekly_summary
+    // row when custom is selected, or null = use latest.
+    var pickedWeek = pickActiveWeek();
 
     /* ── Build HTML ── */
     var html = '<div class="page-title">' +
@@ -34,15 +37,16 @@ window.Views.executive = {
       '<div class="subtitle">Cross-agency snapshot for the weekly review. ' +
       'Click any row to drill into Affiliate Performance.</div></div>';
 
-    html += buildHeadlineKPIs(agencyData, weekly);
+    html += buildSelectedWeekBanner(pickedWeek);
+    html += buildHeadlineKPIs(agencyData, weekly, pickedWeek);
     html += buildPipelineHealth();
     html += buildTopActions(agencyData, weekly);
     html += buildRiskConcentration(weekly);
-    html += build8WeekTrend();
+    html += build8WeekTrend(pickedWeek);
     html += buildAgencyScorecard(agencyData);
     html += buildCreatorSummary(weekly);
     html += buildVideoSummary(weekly);
-    html += buildVideosPerSKU(weekly);
+    html += buildVideosPerSKU(weekly, pickedWeek);
     html += buildNarrativesSummary();
     html += buildLegend();
 
@@ -115,28 +119,53 @@ function computeAgencyAggregates() {
   };
 }
 
-/* ── 1. Headline KPI strip — with % of target ── */
-function buildHeadlineKPIs(ag, weekly) {
+/* ── 1. Headline KPI strip — with % of target ──
+   When a custom week is picked AND we have a summaryRow for it, the GMV card
+   reflects THAT week's numbers (vs weekly target). Otherwise it shows the
+   monthly cross-agency aggregate (vs monthly target). */
+function buildHeadlineKPIs(ag, weekly, pickedWeek) {
   var t = ag.totals;
   var T = (CONFIG.targets || {});
-  var weeklyWoWDollar = weekly ? weekly.kpis.wow_dollar : null;
-  var weeklyWoWPct    = weekly ? weekly.kpis.wow_pct    : null;
   var driverNote = buildWoWDriverNote(weekly);
 
-  // Monthly GMV vs target
-  var gmvVsTargetPct = T.monthlyGMV ? Math.round(t.gmv / T.monthlyGMV * 100) : null;
-  var gmvSub = gmvVsTargetPct != null
-    ? gmvVsTargetPct + '% of $' + T.monthlyGMV.toLocaleString() + ' monthly target'
-    : 'Latest month, all agencies';
-  if (weekly && weeklyWoWDollar != null) {
-    var sign = weeklyWoWDollar >= 0 ? '+' : '−';
-    var wowFragment = 'Latest week: ' + sign + '$' + Math.abs(Math.round(weeklyWoWDollar)).toLocaleString() +
-      ' (' + (weeklyWoWPct != null ? (weeklyWoWPct >= 0 ? '+' : '') + weeklyWoWPct.toFixed(2) + '% WoW' : 'WoW —') + ')';
-    gmvSub = (gmvVsTargetPct != null ? gmvVsTargetPct + '% of monthly target · ' : '') + wowFragment;
+  // Default: monthly cross-agency aggregate
+  var gmvHeadline = U.fmt$(t.gmv);
+  var gmvSub, gmvColor;
+
+  if (pickedWeek && pickedWeek.summaryRow) {
+    // Custom week → headline becomes that week's total GMV
+    var row = pickedWeek.summaryRow;
+    var weeklyTarget = T.weeklyGMV;
+    var weeklyVsTargetPct = weeklyTarget ? Math.round(row.total_gmv / weeklyTarget * 100) : null;
+    gmvHeadline = '$' + Math.round(row.total_gmv).toLocaleString();
+    var wowSign = (row.total_gmv_wow != null && row.total_gmv_wow >= 0) ? '+' : '−';
+    var wowPart = row.total_gmv_wow != null
+      ? wowSign + Math.abs(row.total_gmv_wow * 100).toFixed(2) + '% WoW'
+      : 'WoW —';
+    gmvSub = (weeklyVsTargetPct != null ? weeklyVsTargetPct + '% of $' + weeklyTarget.toLocaleString() + ' weekly target · ' : '') +
+      'Week of ' + (pickedWeek.label || pickedWeek.start) + ' · ' + wowPart;
+    gmvColor = weeklyVsTargetPct == null ? 'green'
+      : weeklyVsTargetPct >= 100 ? 'green'
+      : weeklyVsTargetPct >= 80 ? 'yellow' : 'red';
+  } else {
+    // Default: monthly aggregate
+    var gmvVsTargetPct = T.monthlyGMV ? Math.round(t.gmv / T.monthlyGMV * 100) : null;
+    var weeklyWoWDollar = weekly ? weekly.kpis.wow_dollar : null;
+    var weeklyWoWPct    = weekly ? weekly.kpis.wow_pct    : null;
+
+    gmvSub = gmvVsTargetPct != null
+      ? gmvVsTargetPct + '% of $' + T.monthlyGMV.toLocaleString() + ' monthly target'
+      : 'Latest month, all agencies';
+    if (weekly && weeklyWoWDollar != null) {
+      var sign = weeklyWoWDollar >= 0 ? '+' : '−';
+      var wowFragment = 'Latest week: ' + sign + '$' + Math.abs(Math.round(weeklyWoWDollar)).toLocaleString() +
+        ' (' + (weeklyWoWPct != null ? (weeklyWoWPct >= 0 ? '+' : '') + weeklyWoWPct.toFixed(2) + '% WoW' : 'WoW —') + ')';
+      gmvSub = (gmvVsTargetPct != null ? gmvVsTargetPct + '% of monthly target · ' : '') + wowFragment;
+    }
+    gmvColor = gmvVsTargetPct == null ? 'green'
+      : gmvVsTargetPct >= 100 ? 'green'
+      : gmvVsTargetPct >= 80 ? 'yellow' : 'red';
   }
-  var gmvColor = gmvVsTargetPct == null ? 'green'
-    : gmvVsTargetPct >= 100 ? 'green'
-    : gmvVsTargetPct >= 80 ? 'yellow' : 'red';
 
   // ROAS vs target
   var roasVsTarget = T.blendedROAS && t.roas != null ? Math.round(t.roas / T.blendedROAS * 100) : null;
@@ -157,8 +186,10 @@ function buildHeadlineKPIs(ag, weekly) {
   var driverColor = driverNote.dir === 'pos' ? 'green'
     : driverNote.dir === 'neg' ? 'red' : 'gray';
 
+  var gmvLabel = pickedWeek && pickedWeek.summaryRow ? 'Weekly GMV' : 'Total GMV';
+
   return '<div class="kpi-grid">' +
-    kpiCard('Total GMV',        U.fmt$(t.gmv),                   gmvSub, gmvColor) +
+    kpiCard(gmvLabel,           gmvHeadline,                     gmvSub, gmvColor) +
     kpiCard('Blended ROAS',     U.fmtX(t.roas),                  roasSub, roasColor) +
     kpiCard('Performing Creators',
             t.performing + ' / ' + t.creators,
@@ -343,12 +374,14 @@ function buildRiskConcentration(weekly) {
 }
 
 /* ── 8-week trend chart (uses DASHBOARD_DATA.weekly_summary) ── */
-function build8WeekTrend() {
+function build8WeekTrend(pickedWeek) {
   var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
   if (!ws || !ws.rows) return '';
+  var meta = 'Trailing 8 weekly periods · 4-week rolling average overlaid';
+  if (pickedWeek) meta += ' · highlighting ' + (pickedWeek.label || pickedWeek.start);
   return '<div class="section-header" style="margin-top:32px">' +
     '<span class="section-title">8-Week GMV Trend</span>' +
-    '<span class="section-meta">Trailing 8 weekly periods · 4-week rolling average overlaid</span></div>' +
+    '<span class="section-meta">' + meta + '</span></div>' +
     '<div class="chart-card"><div class="chart-wrap" style="height:280px"><canvas id="exec-8wk-chart"></canvas></div></div>';
 }
 
@@ -365,8 +398,16 @@ function draw8WeekChart() {
     var slice = gmv.slice(Math.max(0, i - 3), i + 1);
     return slice.reduce(function (s, v) { return s + v; }, 0) / slice.length;
   });
-
   var T = (CONFIG.targets || {}).weeklyGMV;
+
+  // Highlight the picked week (if any) by enlarging that point and changing color
+  var pickedWeek = pickActiveWeek();
+  var highlightIdx = -1;
+  if (pickedWeek && pickedWeek.summaryRow) {
+    highlightIdx = ws.rows.indexOf(pickedWeek.summaryRow);
+  }
+  var pointRadii = labels.map(function (_, i) { return i === highlightIdx ? 8 : 4; });
+  var pointBgs = labels.map(function (_, i) { return i === highlightIdx ? '#FF6B00' : '#4C9C2E'; });
 
   new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -380,8 +421,8 @@ function draw8WeekChart() {
           backgroundColor: 'rgba(76,156,46,0.10)',
           fill: true,
           tension: 0.25,
-          pointRadius: 4,
-          pointBackgroundColor: '#4C9C2E',
+          pointRadius: pointRadii,
+          pointBackgroundColor: pointBgs,
           borderWidth: 2
         },
         {
@@ -562,8 +603,10 @@ function buildVideoSummary(weekly) {
   return html;
 }
 
-/* ── 5. Videos per SKU — driven by window.SKU_VIDEOS (subscription dashboard) ── */
-function buildVideosPerSKU(weekly) {
+/* ── 5. Videos per SKU — driven by window.SKU_VIDEOS (subscription dashboard) ──
+   The current parser emits only latest-week + cumulative columns. When a
+   custom week is picked, we display a notice that the table is latest-only. */
+function buildVideosPerSKU(weekly, pickedWeek) {
   var skus = window.SKU_VIDEOS || [];
   if (!skus.length) {
     return '<div class="section-header" style="margin-top:32px">' +
@@ -581,6 +624,13 @@ function buildVideosPerSKU(weekly) {
   var html = '<div class="section-header" style="margin-top:32px">' +
     '<span class="section-title">Videos per SKU</span>' +
     '<span class="section-meta">' + rows.length + ' SKUs · ' + totalPublished.toLocaleString() + ' total published videos · cumulative across reporting period</span></div>';
+
+  if (pickedWeek) {
+    html += '<div class="info-notice" style="margin-bottom:14px">' +
+      '<strong>Note:</strong> "Latest Week" columns show the most recent reporting week (Apr 27–May 3). ' +
+      'Per-week SKU breakdown for ' + escapeHtml(pickedWeek.label) + ' requires a parser update — pending.' +
+      '</div>';
+  }
 
   html += '<div class="table-card"><div class="table-scroll"><table class="data-table">' +
     '<thead><tr>' +
@@ -690,4 +740,46 @@ function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* Resolve the active week from window._appState. Returns:
+   { source: 'latest'|'custom', start, end, label, summaryRow, samplingWeek } or null. */
+function pickActiveWeek() {
+  var s = window._appState || {};
+  if (s.timeRange !== 'custom' || !s.customFrom) return null;
+
+  var samplingWeeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
+  var samplingWeek = samplingWeeks.find(function (w) { return w.start === s.customFrom; });
+
+  // Try to match against weekly_summary rows by label suffix (the weekly_summary
+  // rows carry a `week` like "Apr 27–May 3" — match by start month/day).
+  var summaryRow = null;
+  var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
+  if (ws && ws.rows && samplingWeek) {
+    summaryRow = ws.rows.find(function (r) {
+      return r.week && samplingWeek.label && r.week.replace(/\s/g, '') === samplingWeek.label.replace(/\s/g, '');
+    });
+  }
+  if (!samplingWeek) return null;
+  return {
+    source: 'custom',
+    start: samplingWeek.start,
+    end: samplingWeek.end,
+    label: samplingWeek.label,
+    summaryRow: summaryRow,
+    samplingWeek: samplingWeek
+  };
+}
+
+function buildSelectedWeekBanner(pickedWeek) {
+  if (!pickedWeek) return '';
+  var coverageMissing = !pickedWeek.summaryRow;
+  var msg = '<strong>Showing data for week of ' + escapeHtml(pickedWeek.label) +
+    '</strong> (' + escapeHtml(pickedWeek.start) + ' – ' + escapeHtml(pickedWeek.end) + ').';
+  msg += ' Headline KPIs, 8-week trend, and SKU table reflect this week.';
+  if (coverageMissing) {
+    msg += ' <em>Channel-level KPIs not in archive for this week — falling back to latest.</em>';
+  }
+  msg += ' <strong>Drill-downs (Creators, Videos, Risk, Narratives) are current-week only</strong> — historical creator/video archives aren\'t wired into the pipeline yet.';
+  return '<div class="alert-bar"><div class="alert alert-yellow"><div>' + msg + '</div></div></div>';
 }
