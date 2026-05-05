@@ -486,6 +486,69 @@ h1, h2, h3, h4, h5,
   color: var(--gray-700);
 }
 
+/* Fresh-vs-Legacy GMV stacked bar (Video Performance · Age Cohort chart) */
+.ap-cohort-bar {
+  display: flex;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.ap-cohort-bar-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--surface);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  transition: filter .12s;
+  cursor: default;
+  min-width: 0;
+}
+
+.ap-cohort-bar-seg:hover { filter: brightness(1.08); }
+
+.ap-cohort-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ap-cohort-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ap-cohort-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--gray-700);
+}
+
+.ap-cohort-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ap-cohort-name {
+  font-weight: 600;
+  color: var(--brand-charcoal);
+}
+
+.ap-cohort-val {
+  color: var(--gray-500);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Pager — left-aligned, stacked (info on top, buttons below). Brand-toned. */
 .ap-pager {
   display: flex;

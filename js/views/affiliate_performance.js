@@ -574,9 +574,10 @@
         '<span class="section-meta">Cumulative across reporting period · from subscription dashboard</span></div>' +
       '<div id="ap-video-velocity"></div>' +
 
-      '<div class="section-header" style="margin-top:32px"><span class="section-title">Age Cohorts</span>' +
-        '<span class="section-meta">Distribution of weekly GMV by video age</span></div>' +
-      '<div id="ap-video-cohorts"></div>' +
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Fresh vs Legacy GMV</span>' +
+        '<span class="section-meta">Stacked split of weekly video GMV by post age. Legacy = 31–90d · Long-tail = 90+d.</span></div>' +
+      '<div id="ap-video-cohort-chart"></div>' +
+      '<div id="ap-video-cohorts" style="margin-top:16px"></div>' +
 
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Top Videos</span>' +
         '<span class="section-meta">Highest-grossing videos this week · 10 per page</span></div>' +
@@ -601,6 +602,7 @@
 
     renderVideoHighlights(document.getElementById('ap-video-highlights'));
     renderSkuTable(document.getElementById('ap-video-velocity'));
+    renderAgeCohortChart(document.getElementById('ap-video-cohort-chart'));
     renderAgeCohorts(document.getElementById('ap-video-cohorts'));
     renderVideoLeaderboard(document.getElementById('ap-video-leaderboard'));
     renderNewLegacyDeclining(document.getElementById('ap-video-newlegacy'));
@@ -780,6 +782,71 @@
         'gray');
     });
     html += '</div>';
+    host.innerHTML = html;
+  }
+
+  /* Stacked horizontal bar showing weekly GMV split across the four age cohorts.
+     Color-coded fresh→aged: green for new/recent, amber for legacy, crimson for
+     long-tail. Useful for "is the pipeline replacing winners fast enough?" reads. */
+  function renderAgeCohortChart(host) {
+    if (!host) return;
+    var D = window.DATA_WEEKLY;
+    if (!D || !D.ageBuckets || !D.ageBuckets.length) {
+      host.innerHTML = '';
+      return;
+    }
+    var buckets = D.ageBuckets.slice().filter(function (b) { return (b.gmv || 0) > 0; });
+    var totalGmv = buckets.reduce(function (s, b) { return s + (b.gmv || 0); }, 0);
+    if (totalGmv <= 0) { host.innerHTML = ''; return; }
+
+    // Map of bucket name → brand color.
+    var colorMap = {
+      'New (0-7d)':       '#79C969',  // brand-green-bright (fresh)
+      'Recent (8-30d)':   '#4C9C2E',  // brand-green (recent)
+      'Legacy (31-90d)':  '#F7BE00',  // brand-amber (legacy)
+      'Long-tail (90+d)': '#CA003D',  // brand-crimson (long-tail)
+      'Unknown':          '#8C9091'   // brand-gray (unattributed)
+    };
+
+    // Build the segments
+    var segments = buckets.map(function (b) {
+      var share = (b.gmv / totalGmv) * 100;
+      return {
+        label: b['Age bucket'],
+        gmv: b.gmv,
+        share: share,
+        videos: b.selling || 0,
+        color: colorMap[b['Age bucket']] || '#8C9091'
+      };
+    });
+
+    // Render: a single horizontal stacked bar + a legend strip below
+    var html = '<div class="card" style="margin-bottom:0;padding:18px 22px">' +
+      '<div class="ap-cohort-bar" role="img" aria-label="Weekly GMV split across age cohorts">';
+    segments.forEach(function (s) {
+      var label = s.share >= 8
+        ? '<span class="ap-cohort-bar-label">' + s.share.toFixed(2) + '%</span>'
+        : '';
+      html += '<div class="ap-cohort-bar-seg" ' +
+        'style="width:' + s.share.toFixed(4) + '%;background:' + s.color + '" ' +
+        'title="' + escapeHtml(s.label) + ': $' + Math.round(s.gmv).toLocaleString() +
+          ' (' + s.share.toFixed(2) + '%) · ' + s.videos.toLocaleString() + ' selling videos">' +
+        label +
+      '</div>';
+    });
+    html += '</div>';
+    // Legend
+    html += '<div class="ap-cohort-legend">';
+    segments.forEach(function (s) {
+      html += '<div class="ap-cohort-legend-item">' +
+        '<span class="ap-cohort-swatch" style="background:' + s.color + '"></span>' +
+        '<span class="ap-cohort-name">' + escapeHtml(s.label) + '</span>' +
+        '<span class="ap-cohort-val">$' + Math.round(s.gmv).toLocaleString() +
+          ' &nbsp;·&nbsp; ' + s.share.toFixed(2) + '%</span>' +
+      '</div>';
+    });
+    html += '</div></div>';
+
     host.innerHTML = html;
   }
 
