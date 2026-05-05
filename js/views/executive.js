@@ -743,24 +743,42 @@ function escapeHtml(s) {
 }
 
 /* Resolve the active week from window._appState. Returns:
-   { source: 'latest'|'custom', start, end, label, summaryRow, samplingWeek } or null. */
+   { source: 'custom', start, end, label, summaryRow, samplingWeek } or null.
+
+   Matches sampling week → weekly_summary row by INDEX (both arrays are
+   chronological and start at the same Monday — Mar 2 2026 = sampling[0] = W1).
+   Falls back to a date_range substring match if indices don't line up. */
 function pickActiveWeek() {
   var s = window._appState || {};
   if (s.timeRange !== 'custom' || !s.customFrom) return null;
 
   var samplingWeeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
-  var samplingWeek = samplingWeeks.find(function (w) { return w.start === s.customFrom; });
+  var samplingIdx = samplingWeeks.findIndex(function (w) { return w.start === s.customFrom; });
+  if (samplingIdx < 0) return null;
+  var samplingWeek = samplingWeeks[samplingIdx];
 
-  // Try to match against weekly_summary rows by label suffix (the weekly_summary
-  // rows carry a `week` like "Apr 27–May 3" — match by start month/day).
   var summaryRow = null;
   var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
-  if (ws && ws.rows && samplingWeek) {
-    summaryRow = ws.rows.find(function (r) {
-      return r.week && samplingWeek.label && r.week.replace(/\s/g, '') === samplingWeek.label.replace(/\s/g, '');
-    });
+  if (ws && ws.rows) {
+    // Primary: index-aligned (both lists chronological from Mar 2 2026)
+    if (ws.rows.length > samplingIdx) {
+      summaryRow = ws.rows[samplingIdx];
+    }
+    // Fallback: match by date_range substring (e.g. weekly_summary date_range
+    // "Mar 2–Mar 8" against sampling label "Mar 2–8").
+    if (!summaryRow) {
+      summaryRow = ws.rows.find(function (r) {
+        if (!r.date_range || !samplingWeek.label) return false;
+        var a = r.date_range.replace(/\s/g, '').toLowerCase();
+        var b = samplingWeek.label.replace(/\s/g, '').toLowerCase();
+        // Compare leading month-day (e.g. "mar2" prefix)
+        var prefixA = a.split(/[––-]/)[0];
+        var prefixB = b.split(/[––-]/)[0];
+        return prefixA && prefixB && prefixA === prefixB;
+      });
+    }
   }
-  if (!samplingWeek) return null;
+
   return {
     source: 'custom',
     start: samplingWeek.start,
