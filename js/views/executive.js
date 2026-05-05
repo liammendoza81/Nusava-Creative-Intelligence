@@ -39,7 +39,7 @@ window.Views.executive = {
 
     html += buildSelectedWeekBanner(pickedWeek);
     html += buildHeadlineKPIs(agencyData, weekly, pickedWeek);
-    html += buildPipelineHealth();
+    html += buildPipelineHealth(pickedWeek);
     html += buildTopActions(agencyData, weekly);
     html += buildRiskConcentration(weekly);
     html += build8WeekTrend(pickedWeek);
@@ -201,21 +201,50 @@ function buildHeadlineKPIs(ag, weekly, pickedWeek) {
   '</div>';
 }
 
-/* ── Pipeline Health (manual entry — leading indicators) ── */
-function buildPipelineHealth() {
+/* ── Pipeline Health (mixed: auto-from-sampling + manual config) ── */
+function buildPipelineHealth(pickedWeek) {
   var p = (CONFIG.pipelineHealth || {});
-  var stale = p.lastUpdated ? '' : '<span style="color:var(--brand-amber);font-size:11px;font-weight:600;margin-left:8px">Update before meeting →</span>';
-  var sub = p.lastUpdated ? 'Updated ' + p.lastUpdated : 'Edit values in <code>js/config.js</code> → <code>pipelineHealth</code>';
+
+  // Samples Shipped comes from window.SAMPLING (the source-of-truth weekly
+  // sampling rollup) so it doesn't rely on manual entry. Picks the week
+  // matching the active selection, else the latest sampling week.
+  var samplingWeek = pickSamplingWeekForExec(pickedWeek);
+  var samplesShipped = (samplingWeek && samplingWeek.core && samplingWeek.core.samples_shipped) || null;
+  var samplesContext = samplingWeek
+    ? 'Week of ' + samplingWeek.label + ' · activations 7–14 days out'
+    : (pickedWeek && !samplingWeek ? 'No sampling files yet for this week' : 'Sampling data not loaded');
+  var samplesColor = samplesShipped == null ? 'gray' : samplesShipped > 0 ? 'green' : 'red';
+
+  var stale = p.lastUpdated ? '' : '<span style="color:var(--brand-amber);font-size:11px;font-weight:600;margin-left:8px">Update manual fields before meeting →</span>';
+  var sub = p.lastUpdated
+    ? 'Manual fields last updated ' + p.lastUpdated + ' · Samples Shipped is auto-pulled from sampling data'
+    : 'Samples Shipped is auto-pulled from sampling data. Edit other fields in <code>js/config.js</code> → <code>pipelineHealth</code>';
+
   return '<div class="section-header" style="margin-top:32px">' +
     '<span class="section-title">Pipeline Health</span>' +
-    '<span class="section-meta">Leading indicators · manual entry' + stale + '</span></div>' +
+    '<span class="section-meta">Leading indicators' + stale + '</span></div>' +
     '<div class="kpi-grid">' +
-      kpiCard('Briefs Sent', (p.briefsSent || 0).toLocaleString(), 'This week · drives next 2 weeks of new content', p.briefsSent > 0 ? 'green' : 'gray') +
-      kpiCard('Samples Shipped', (p.samplesShipped || 0).toLocaleString(), 'This week · activations 7–14 days out', p.samplesShipped > 0 ? 'green' : 'gray') +
-      kpiCard('Creators Onboarding', (p.creatorsOnboarding || 0).toLocaleString(), 'Signed, not yet posting', p.creatorsOnboarding > 0 ? 'green' : 'gray') +
-      kpiCard('Creators in Outreach', (p.creatorsInOutreach || 0).toLocaleString(), 'Prospecting pipeline', p.creatorsInOutreach > 0 ? 'green' : 'gray') +
+      kpiCard('Briefs Sent', (p.briefsSent || 0).toLocaleString(), 'This week · drives next 2 weeks of new content (manual)', p.briefsSent > 0 ? 'green' : 'gray') +
+      kpiCard('Samples Shipped',
+        samplesShipped != null ? samplesShipped.toLocaleString() : '—',
+        samplesContext,
+        samplesColor) +
+      kpiCard('Creators Onboarding', (p.creatorsOnboarding || 0).toLocaleString(), 'Signed, not yet posting (manual)', p.creatorsOnboarding > 0 ? 'green' : 'gray') +
+      kpiCard('Creators in Outreach', (p.creatorsInOutreach || 0).toLocaleString(), 'Prospecting pipeline (manual)', p.creatorsInOutreach > 0 ? 'green' : 'gray') +
     '</div>' +
     '<div class="info-notice" style="margin-top:-8px;font-size:11px">' + sub + '</div>';
+}
+
+/* Resolve which sampling week matches the active selection. Falls back to
+   the most recent sampling week when no custom week is picked, or returns
+   null if the picked week has no sampling counterpart. */
+function pickSamplingWeekForExec(pickedWeek) {
+  var weeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
+  if (!weeks.length) return null;
+  if (pickedWeek && pickedWeek.start) {
+    return weeks.find(function (w) { return w.start === pickedWeek.start; }) || null;
+  }
+  return weeks[weeks.length - 1];
 }
 
 /* ── Top 3 Actions This Week (heuristic-derived) ── */
