@@ -1503,7 +1503,10 @@
   }
 
   // Pick the active sampling week based on app-level state (timeRange + customFrom).
-  // Returns null if state.timeRange === 'custom' and the picked week isn't in the dataset.
+  // - latest mode  → returns the most recent sampling week
+  // - custom mode  → returns matching sampling week, or null if no match
+  //                  (so the "no sampling for this week" placeholder triggers
+  //                   for picks like Apr 27 – May 3 which have no sampling files)
   function pickSamplingWeek(sampling) {
     var weeks = sampling.weeks || [];
     if (!weeks.length) return null;
@@ -1514,7 +1517,7 @@
 
     if (timeRange === 'custom' && customFrom) {
       var match = weeks.find(function (w) { return w.start === customFrom; });
-      if (match) return match;
+      return match || null;   // null when custom pick has no sampling counterpart
     }
     return weeks[weeks.length - 1];
   }
