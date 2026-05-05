@@ -2,7 +2,7 @@
 // Re-run /weekly-tiktok-dashboard to refresh.
 window.DASHBOARD_DATA = {
   "meta": {
-    "generated_at": "2026-05-04T18:12:06.563206",
+    "generated_at": "2026-05-04T20:09:29.117510",
     "week_label": "W9",
     "week_period": "2026-04-27 to 2026-05-03 (7d)",
     "days_in_week": 7,
