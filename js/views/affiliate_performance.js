@@ -579,6 +579,14 @@
       '<div id="ap-video-cohort-chart"></div>' +
       '<div id="ap-video-cohorts" style="margin-top:16px"></div>' +
 
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Video Lifecycle Bell Curve</span>' +
+        '<span class="section-meta">How a typical winning video earns over its lifetime (cohort: 499 winners, posted with ≥10wks forward observation).</span></div>' +
+      '<div id="ap-video-bellcurve"></div>' +
+
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Forward GMV Forecast — This Week\'s New Content</span>' +
+        '<span class="section-meta">Projected contribution from videos posted in the last 7 days, using the bell curve as the per-video template.</span></div>' +
+      '<div id="ap-video-forecast"></div>' +
+
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Top Videos</span>' +
         '<span class="section-meta">Highest-grossing videos this week · 10 per page</span></div>' +
       '<div id="ap-video-leaderboard"></div>' +
@@ -598,12 +606,16 @@
           '<dt>Top Video</dt><dd>Highest single-video GMV this week.</dd>' +
           '<dt>Videos per SKU</dt><dd>Cumulative published-video count and GMV per pack-size SKU, from the subscription dashboard.</dd>' +
           '<dt>Age Cohorts</dt><dd>Distribution of weekly GMV across new (0–7d), recent (8–30d), legacy (31–90d), long-tail (90+d).</dd>' +
+          '<dt>Bell Curve</dt><dd>Mean % of lifetime GMV earned at each week of a winning video\'s life. Peak at week 1 (~24% of lifetime); 68% of lifetime earned by day 30.</dd>' +
+          '<dt>Forward GMV Forecast</dt><dd>Projects this week\'s new-content earnings forward 12 weeks using the bell curve. Takes the actual week-0 GMV and extrapolates by the typical-winner template.</dd>' +
         '</dl></div>';
 
     renderVideoHighlights(document.getElementById('ap-video-highlights'));
     renderSkuTable(document.getElementById('ap-video-velocity'));
     renderAgeCohortChart(document.getElementById('ap-video-cohort-chart'));
     renderAgeCohorts(document.getElementById('ap-video-cohorts'));
+    renderBellCurve(document.getElementById('ap-video-bellcurve'));
+    renderGMVForecast(document.getElementById('ap-video-forecast'));
     renderVideoLeaderboard(document.getElementById('ap-video-leaderboard'));
     renderNewLegacyDeclining(document.getElementById('ap-video-newlegacy'));
   }
@@ -848,6 +860,193 @@
     html += '</div></div>';
 
     host.innerHTML = html;
+  }
+
+  /* Bell Curve — typical winning-video lifecycle from window.VIDEO_LIFECYCLE.
+     Renders as a Chart.js bar chart with the peak week highlighted in brand orange. */
+  function renderBellCurve(host) {
+    if (!host) return;
+    var data = window.VIDEO_LIFECYCLE;
+    if (!data || !data.curve || !data.curve.length) {
+      host.innerHTML = '<div class="info-notice">Bell curve data not loaded. Re-run the lifecycle analyzer to regenerate <code>data/video-lifecycle.js</code>.</div>';
+      return;
+    }
+    var curve = data.curve;
+    var peakIdx = curve.reduce(function (max, c, i, arr) { return c.mean_pct > arr[max].mean_pct ? i : max; }, 0);
+    var cumByWeek4 = curve.slice(0, 5).reduce(function (s, c) { return s + c.mean_pct; }, 0);
+
+    host.innerHTML =
+      '<div class="card" style="margin-bottom:0;padding:18px 22px">' +
+        '<div class="chart-wrap" style="height:280px"><canvas id="ap-bellcurve-canvas"></canvas></div>' +
+        '<div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">' +
+          kpiCard('Peak Week', 'Week ' + curve[peakIdx].age_weeks, curve[peakIdx].mean_pct.toFixed(2) + '% of lifetime · mean $' + Math.round(curve[peakIdx].mean_gmv).toLocaleString(), 'orange') +
+          kpiCard('First 30 Days', cumByWeek4.toFixed(2) + '%', 'Cumulative through week 4 — front-loaded earnings', 'green') +
+          kpiCard('Cohort Size', data.n_winners.toLocaleString() + ' winners', 'Posted within observation window · lifetime ≥ $' + data.winners_threshold, 'gray') +
+        '</div>' +
+      '</div>';
+
+    setTimeout(function () {
+      var canvas = document.getElementById('ap-bellcurve-canvas');
+      if (!canvas || typeof Chart === 'undefined') return;
+      var labels = curve.map(function (c) { return 'Wk ' + c.age_weeks; });
+      var values = curve.map(function (c) { return c.mean_pct; });
+      var colors = values.map(function (_, i) { return i === peakIdx ? '#FF6B00' : '#4C9C2E'; });
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Mean % of lifetime GMV',
+            data: values,
+            backgroundColor: colors,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var c = curve[ctx.dataIndex];
+                  return [
+                    'Mean: ' + c.mean_pct.toFixed(2) + '% of lifetime',
+                    'Median: ' + c.median_pct.toFixed(2) + '%',
+                    'Mean $: $' + Math.round(c.mean_gmv).toLocaleString() + '/video',
+                    'N: ' + c.n_winners + ' winners'
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: function (v) { return v.toFixed(0) + '%'; } },
+              title: { display: true, text: '% of lifetime GMV (mean)', font: { size: 11 } }
+            },
+            x: {
+              title: { display: true, text: 'Weeks since post', font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }, 50);
+  }
+
+  /* Forward GMV Forecast — project this week's new-content earnings forward 12 weeks
+     by anchoring on actual week-0 GMV and scaling through the bell curve. */
+  function renderGMVForecast(host) {
+    if (!host) return;
+    var data = window.VIDEO_LIFECYCLE;
+    var D = window.DATA_WEEKLY;
+    if (!data || !data.curve || !D || !D.ageBuckets) {
+      host.innerHTML = '<div class="info-notice">Forecast requires both <code>video-lifecycle.js</code> and <code>weekly-tiktok.js</code>.</div>';
+      return;
+    }
+    var newBucket = D.ageBuckets.find(function (b) { return b['Age bucket'] === 'New (0-7d)'; });
+    if (!newBucket || (newBucket.gmv || 0) <= 0) {
+      host.innerHTML = '<div class="info-notice">No new (0-7d) GMV this week to project from.</div>';
+      return;
+    }
+    var week0Actual = newBucket.gmv;
+    var week0Pct = data.curve[0].mean_pct;  // typical % of lifetime in week 0
+    if (week0Pct <= 0) { host.innerHTML = ''; return; }
+
+    // Imply lifetime from week-0 actual + bell curve
+    var impliedLifetime = week0Actual / (week0Pct / 100);
+    // Project forward
+    var projections = data.curve.map(function (c) {
+      return {
+        age: c.age_weeks,
+        pct: c.mean_pct,
+        projected: c.mean_pct / 100 * impliedLifetime,
+        actual: c.age_weeks === 0 ? week0Actual : null
+      };
+    });
+    var remainingGMV = projections.slice(1).reduce(function (s, p) { return s + p.projected; }, 0);
+    var totalLifetime = projections.reduce(function (s, p) { return s + p.projected; }, 0);
+    var peakProj = projections.reduce(function (max, p) { return p.projected > max.projected ? p : max; }, projections[0]);
+
+    host.innerHTML =
+      '<div class="card" style="margin-bottom:0;padding:18px 22px">' +
+        '<div style="margin-bottom:14px;color:var(--gray-700);font-size:13px;line-height:1.55">' +
+          '<strong>' + newBucket.selling.toLocaleString() + ' new videos</strong> produced <strong>$' + Math.round(week0Actual).toLocaleString() + '</strong> in their first week. ' +
+          'Applying the typical lifecycle bell curve (week 0 = ' + week0Pct.toFixed(2) + '% of lifetime), this cohort is on track to earn ' +
+          '<strong>$' + Math.round(impliedLifetime).toLocaleString() + '</strong> over the next 12 weeks — ' +
+          '<strong>$' + Math.round(remainingGMV).toLocaleString() + '</strong> beyond what\'s already in the books.' +
+        '</div>' +
+        '<div class="chart-wrap" style="height:260px"><canvas id="ap-forecast-canvas"></canvas></div>' +
+        '<div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">' +
+          kpiCard('Total 12-Week Projection', '$' + Math.round(totalLifetime).toLocaleString(), 'Lifetime contribution from this week\'s new content', 'green') +
+          kpiCard('Week 0 Actual', '$' + Math.round(week0Actual).toLocaleString(), week0Pct.toFixed(2) + '% of expected lifetime', 'green') +
+          kpiCard('Peak Week Projection', '$' + Math.round(peakProj.projected).toLocaleString(), 'Week ' + peakProj.age + ' (typical peak)', 'orange') +
+          kpiCard('Remaining (Weeks 1–12)', '$' + Math.round(remainingGMV).toLocaleString(), 'Yet to be earned from this cohort', 'green') +
+        '</div>' +
+      '</div>';
+
+    setTimeout(function () {
+      var canvas = document.getElementById('ap-forecast-canvas');
+      if (!canvas || typeof Chart === 'undefined') return;
+      var labels = projections.map(function (p) { return 'Wk ' + p.age; });
+      var actuals = projections.map(function (p) { return p.actual; });   // null for future weeks
+      var future = projections.map(function (p) { return p.age === 0 ? null : p.projected; });
+      new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Actual (this week)',
+              data: actuals,
+              borderColor: '#4C9C2E',
+              backgroundColor: '#4C9C2E',
+              pointRadius: 6,
+              pointBackgroundColor: '#4C9C2E',
+              spanGaps: false,
+              showLine: false,
+            },
+            {
+              label: 'Projected (bell curve)',
+              data: future,
+              borderColor: '#FF6B00',
+              backgroundColor: 'rgba(255,107,0,0.10)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 4,
+              pointBackgroundColor: '#FF6B00',
+              borderWidth: 2,
+              borderDash: [4, 4],
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var p = projections[ctx.dataIndex];
+                  return ctx.dataset.label + ': $' + Math.round(p.projected).toLocaleString() + ' (' + p.pct.toFixed(2) + '% of lifetime)';
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: function (v) { return '$' + (v/1000).toFixed(1) + 'K'; } },
+              title: { display: true, text: 'GMV ($)', font: { size: 11 } }
+            },
+            x: {
+              title: { display: true, text: 'Weeks from post (0 = this week)', font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }, 50);
   }
 
   function renderNewLegacyDeclining(host) {
