@@ -783,52 +783,51 @@ function pickActiveWeek() {
   var s = window._appState || {};
   if (s.timeRange !== 'custom' || !s.customFrom) return null;
 
-  var samplingWeeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
-  var samplingIdx = samplingWeeks.findIndex(function (w) { return w.start === s.customFrom; });
-  if (samplingIdx < 0) return null;
-  var samplingWeek = samplingWeeks[samplingIdx];
+  // Primary source: weekly-archive.js (25 weeks of real KPI snapshots).
+  var archive = (window.WEEKLY_ARCHIVE && window.WEEKLY_ARCHIVE.weeks) || [];
+  var archiveMatch = archive.find(function (w) { return w.start === s.customFrom; });
 
+  // Build a synthetic "summaryRow" shape that the executive renderers expect
+  // (total_gmv + WoW pct), sourced from the archive.
   var summaryRow = null;
-  var ws = window.DASHBOARD_DATA && window.DASHBOARD_DATA.weekly_summary;
-  if (ws && ws.rows) {
-    // Primary: index-aligned (both lists chronological from Mar 2 2026)
-    if (ws.rows.length > samplingIdx) {
-      summaryRow = ws.rows[samplingIdx];
-    }
-    // Fallback: match by date_range substring (e.g. weekly_summary date_range
-    // "Mar 2–Mar 8" against sampling label "Mar 2–8").
-    if (!summaryRow) {
-      summaryRow = ws.rows.find(function (r) {
-        if (!r.date_range || !samplingWeek.label) return false;
-        var a = r.date_range.replace(/\s/g, '').toLowerCase();
-        var b = samplingWeek.label.replace(/\s/g, '').toLowerCase();
-        // Compare leading month-day (e.g. "mar2" prefix)
-        var prefixA = a.split(/[––-]/)[0];
-        var prefixB = b.split(/[––-]/)[0];
-        return prefixA && prefixB && prefixA === prefixB;
-      });
-    }
+  if (archiveMatch) {
+    var k = archiveMatch.kpis || {};
+    summaryRow = {
+      week: archiveMatch.label,
+      date_range: archiveMatch.label,
+      total_gmv: k.total_gmv,
+      total_gmv_wow: k.wow_pct != null ? k.wow_pct / 100 : null,  // wow_pct → fraction
+      total_orders: k.total_orders,
+      total_orders_wow: null,
+    };
   }
+
+  // Pull sampling-week if available (for the Sampling card)
+  var samplingWeeks = (window.SAMPLING && window.SAMPLING.weeks) || [];
+  var samplingWeek = samplingWeeks.find(function (w) { return w.start === s.customFrom; }) || null;
 
   return {
     source: 'custom',
-    start: samplingWeek.start,
-    end: samplingWeek.end,
-    label: samplingWeek.label,
+    start: archiveMatch ? archiveMatch.start : s.customFrom,
+    end:   archiveMatch ? archiveMatch.end   : s.customFrom,
+    label: archiveMatch ? archiveMatch.label : s.customFrom,
     summaryRow: summaryRow,
-    samplingWeek: samplingWeek
+    samplingWeek: samplingWeek,
+    archive: archiveMatch
   };
 }
 
 function buildSelectedWeekBanner(pickedWeek) {
   if (!pickedWeek) return '';
-  var coverageMissing = !pickedWeek.summaryRow;
+  var coverageMissing = !pickedWeek.archive;
   var msg = '<strong>Showing data for week of ' + escapeHtml(pickedWeek.label) +
     '</strong> (' + escapeHtml(pickedWeek.start) + ' – ' + escapeHtml(pickedWeek.end) + ').';
-  msg += ' Headline KPIs, 8-week trend, and SKU table reflect this week.';
   if (coverageMissing) {
-    msg += ' <em>Channel-level KPIs not in archive for this week — falling back to latest.</em>';
+    msg += ' <em>This week isn\'t in the archive yet — falling back to latest week values.</em>';
+  } else {
+    msg += ' Headline KPIs, Age Cohorts, Fresh vs Legacy, and Sampling all reflect this week. ' +
+           '<strong>Drill-down tables (top creators, top videos, declining) show latest-week data</strong> — ' +
+           'historical per-creator/per-video archives aren\'t wired into the pipeline yet.';
   }
-  msg += ' <strong>Drill-downs (Creators, Videos, Risk, Narratives) are current-week only</strong> — historical creator/video archives aren\'t wired into the pipeline yet.';
   return '<div class="alert-bar"><div class="alert alert-yellow"><div>' + msg + '</div></div></div>';
 }

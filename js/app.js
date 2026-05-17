@@ -255,6 +255,11 @@
     // Kill all chart instances before re-render
     Object.keys(Charts.instances).forEach(function (id) { Charts.kill(id); });
 
+    // Swap window.DATA_WEEKLY based on the active week selection so every tab
+    // that reads from DATA_WEEKLY (Summary, Creators, Videos, Diagnostics)
+    // reflects the picked week's KPIs + age buckets.
+    applyActiveWeekToDataWeekly();
+
     // Time range is weekly-only post-2026-05 (Latest or Custom). The active
     // view dictates the surface; the time range only changes which week's
     // data each surface reads from.
@@ -273,6 +278,46 @@
   }
 
   /* (Removed: daily/monthly placeholders — dashboard is weekly-only post-2026-05.) */
+
+  /* Resolve which week the dashboard should treat as "current" and rewrite
+     window.DATA_WEEKLY to that week's KPIs + age buckets. Falls back to the
+     original (latest) snapshot when "Latest" mode is active or the picked
+     week isn't in the archive. */
+  function applyActiveWeekToDataWeekly() {
+    // Cache the original DATA_WEEKLY on first call — that's the latest week's
+    // full snapshot, including creators[], topVideos[], etc.
+    if (!window._DATA_WEEKLY_LATEST && window.DATA_WEEKLY) {
+      window._DATA_WEEKLY_LATEST = window.DATA_WEEKLY;
+    }
+    var latest = window._DATA_WEEKLY_LATEST;
+    if (!latest) return;
+
+    // Default: just restore the latest snapshot
+    if (state.timeRange !== 'custom' || !state.customFrom) {
+      window.DATA_WEEKLY = latest;
+      return;
+    }
+
+    // Find the archive entry for the picked week
+    var archive = window.WEEKLY_ARCHIVE && window.WEEKLY_ARCHIVE.weeks;
+    if (!archive) { window.DATA_WEEKLY = latest; return; }
+    var match = archive.find(function (w) { return w.start === state.customFrom; });
+    if (!match) { window.DATA_WEEKLY = latest; return; }
+
+    // Build a synthetic DATA_WEEKLY by overlaying the picked week's kpis +
+    // age buckets onto the latest snapshot. Creator/video drill-down arrays
+    // stay from latest (no historical archive for those yet) — views that
+    // reference them show a "drill-down shows latest week" notice.
+    window.DATA_WEEKLY = Object.assign({}, latest, {
+      label: match.label,
+      wk_start: match.start,
+      wk_end: match.end,
+      kpis: Object.assign({}, latest.kpis, match.kpis),
+      ageBuckets: match.ageBuckets,
+      _from_archive: true,
+      _archive_start: match.start
+    });
+  }
 
   /* ── Initialise the application ── */
   function init() {
