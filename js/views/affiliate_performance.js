@@ -580,7 +580,7 @@
       '<div id="ap-video-cohorts" style="margin-top:16px"></div>' +
 
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Video Lifecycle Bell Curve</span>' +
-        '<span class="section-meta">How a typical winning video earns over its lifetime (cohort: 499 winners, posted with ≥10wks forward observation).</span></div>' +
+        '<span class="section-meta">How a typical winning video earns over its lifetime · switch between all-winners aggregate and per-SKU curves (B12 · D3K2 · Wellness).</span></div>' +
       '<div id="ap-video-bellcurve"></div>' +
 
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Forward GMV Forecast — This Week\'s New Content</span>' +
@@ -606,7 +606,7 @@
           '<dt>Top Video</dt><dd>Highest single-video GMV this week.</dd>' +
           '<dt>Videos per SKU</dt><dd>Cumulative published-video count and GMV per pack-size SKU, from the subscription dashboard.</dd>' +
           '<dt>Age Cohorts</dt><dd>Distribution of weekly GMV across new (0–7d), recent (8–30d), legacy (31–90d), long-tail (90+d).</dd>' +
-          '<dt>Bell Curve</dt><dd>Mean % of lifetime GMV earned at each week of a winning video\'s life. Peak at week 1 (~24% of lifetime); 68% of lifetime earned by day 30.</dd>' +
+          '<dt>Bell Curve</dt><dd>Mean % of lifetime GMV earned at each week of a winning video\'s life. Peak at week 1 (~24% of lifetime); 68% of lifetime earned by day 30. Use the SKU dropdown to compare B12 vs D3K2 vs Wellness — different families have different lifecycle shapes.</dd>' +
           '<dt>Forward GMV Forecast</dt><dd>Projects this week\'s new-content earnings forward 12 weeks using the bell curve. Takes the actual week-0 GMV and extrapolates by the typical-winner template.</dd>' +
         '</dl></div>';
 
@@ -862,36 +862,98 @@
     host.innerHTML = html;
   }
 
-  /* Bell Curve — typical winning-video lifecycle from window.VIDEO_LIFECYCLE.
-     Renders as a Chart.js bar chart with the peak week highlighted in brand orange. */
+  /* Bell Curve — typical winning-video lifecycle from window.VIDEO_LIFECYCLE
+     (aggregate) and window.VIDEO_LIFECYCLE_BY_SKU (per-SKU splits).
+
+     Renders a Chart.js bar chart for the selected SKU; a dropdown at the
+     top lets the user swap between All Winners and per-SKU curves
+     (B12 / D3K2 / Wellness, with pack-size splits where the sample
+     permits). */
   function renderBellCurve(host) {
     if (!host) return;
-    var data = window.VIDEO_LIFECYCLE;
-    if (!data || !data.curve || !data.curve.length) {
+    var aggregate = window.VIDEO_LIFECYCLE;
+    if (!aggregate || !aggregate.curve || !aggregate.curve.length) {
       host.innerHTML = '<div class="info-notice">Bell curve data not loaded. Re-run the lifecycle analyzer to regenerate <code>data/video-lifecycle.js</code>.</div>';
       return;
     }
-    var curve = data.curve;
-    var peakIdx = curve.reduce(function (max, c, i, arr) { return c.mean_pct > arr[max].mean_pct ? i : max; }, 0);
-    var cumByWeek4 = curve.slice(0, 5).reduce(function (s, c) { return s + c.mean_pct; }, 0);
+
+    // Build the list of selectable curves. The "All Winners" option points
+    // at the aggregate VIDEO_LIFECYCLE; per-SKU options point at entries
+    // in VIDEO_LIFECYCLE_BY_SKU.skus.
+    var skuData = window.VIDEO_LIFECYCLE_BY_SKU;
+    var options = [{
+      key: 'all',
+      label: 'All Winners (aggregate)',
+      family: 'All',
+      pack_size: 'All',
+      n_winners: aggregate.n_winners,
+      confidence: 'high',
+      curve: aggregate.curve,
+    }];
+    if (skuData && Array.isArray(skuData.skus)) {
+      skuData.skus.forEach(function (s) { options.push(s); });
+    }
+
+    // Persist selection across re-renders.
+    if (!window._apBellCurveSelection) window._apBellCurveSelection = 'all';
+    var current = options.find(function (o) { return o.key === window._apBellCurveSelection; }) || options[0];
+
+    // Build dropdown HTML.
+    var optsHtml = options.map(function (o) {
+      var sel = o.key === current.key ? ' selected' : '';
+      var conf = o.confidence === 'low' ? ' ⚠️ small sample' : '';
+      return '<option value="' + o.key + '"' + sel + '>'
+        + o.label + ' · n=' + o.n_winners + conf + '</option>';
+    }).join('');
 
     host.innerHTML =
       '<div class="card" style="margin-bottom:0;padding:18px 22px">' +
-        '<div class="chart-wrap" style="height:280px"><canvas id="ap-bellcurve-canvas"></canvas></div>' +
-        '<div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">' +
-          kpiCard('Peak Week', 'Week ' + curve[peakIdx].age_weeks, curve[peakIdx].mean_pct.toFixed(2) + '% of lifetime · mean $' + Math.round(curve[peakIdx].mean_gmv).toLocaleString(), 'orange') +
-          kpiCard('First 30 Days', cumByWeek4.toFixed(2) + '%', 'Cumulative through week 4 — front-loaded earnings', 'green') +
-          kpiCard('Cohort Size', data.n_winners.toLocaleString() + ' winners', 'Posted within observation window · lifetime ≥ $' + data.winners_threshold, 'gray') +
+        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px">' +
+          '<label for="ap-bellcurve-sku" style="font-weight:600;font-size:13px;color:#444">SKU</label>' +
+          '<select id="ap-bellcurve-sku" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;min-width:280px">'
+            + optsHtml +
+          '</select>' +
+          (current.confidence === 'low'
+            ? '<span style="font-size:12px;color:#A56000;background:#FFF4E5;padding:4px 10px;border-radius:12px">Small sample (n=' + current.n_winners + ') — interpret cautiously</span>'
+            : '') +
         '</div>' +
+        '<div class="chart-wrap" style="height:280px"><canvas id="ap-bellcurve-canvas"></canvas></div>' +
+        '<div id="ap-bellcurve-kpis" style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px"></div>' +
       '</div>';
 
-    setTimeout(function () {
+    var drawCurve = function (selKey) {
+      var sel = options.find(function (o) { return o.key === selKey; }) || options[0];
+      window._apBellCurveSelection = sel.key;
+      var curve = sel.curve;
+      var peakIdx = curve.reduce(function (max, c, i, arr) {
+        return c.mean_pct > arr[max].mean_pct ? i : max;
+      }, 0);
+      var cumByWeek4 = curve.slice(0, 5).reduce(function (s, c) { return s + c.mean_pct; }, 0);
+
+      // KPI cards under chart.
+      var kpiHost = document.getElementById('ap-bellcurve-kpis');
+      if (kpiHost) {
+        kpiHost.innerHTML =
+          kpiCard('Peak Week', 'Week ' + curve[peakIdx].age_weeks,
+            curve[peakIdx].mean_pct.toFixed(2) + '% of lifetime · mean $' + Math.round(curve[peakIdx].mean_gmv).toLocaleString(),
+            'orange') +
+          kpiCard('First 30 Days', cumByWeek4.toFixed(2) + '%',
+            'Cumulative through week 4 — front-loaded earnings', 'green') +
+          kpiCard('Cohort Size', sel.n_winners.toLocaleString() + ' winners',
+            sel.key === 'all'
+              ? 'All mature winners · lifetime ≥ $100'
+              : sel.label + ' · lifetime ≥ $100',
+            sel.confidence === 'low' ? 'yellow' : 'gray');
+      }
+
+      // Chart.
       var canvas = document.getElementById('ap-bellcurve-canvas');
       if (!canvas || typeof Chart === 'undefined') return;
+      if (canvas._chart) { canvas._chart.destroy(); }
       var labels = curve.map(function (c) { return 'Wk ' + c.age_weeks; });
       var values = curve.map(function (c) { return c.mean_pct; });
       var colors = values.map(function (_, i) { return i === peakIdx ? '#FF6B00' : '#4C9C2E'; });
-      new Chart(canvas.getContext('2d'), {
+      canvas._chart = new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
           labels: labels,
@@ -932,6 +994,17 @@
           }
         }
       });
+    };
+
+    setTimeout(function () {
+      drawCurve(current.key);
+      var sel = document.getElementById('ap-bellcurve-sku');
+      if (sel) {
+        sel.addEventListener('change', function () {
+          // Full re-render so the warning chip / KPIs refresh.
+          renderBellCurve(host);
+        });
+      }
     }, 50);
   }
 
