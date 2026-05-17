@@ -591,6 +591,10 @@
         '<span class="section-meta">GMV → units → DOS. Joins weekly run-rate × current on-hand × lead time (60d). Red = reorder now, yellow = watch, green = comfortable.</span></div>' +
       '<div id="ap-video-inventory-forecast"></div>' +
 
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Forecast Accuracy — Backtest</span>' +
+        '<span class="section-meta">Bell-curve forecast vs actuals at +1, +2, +4, +8 week horizons across all historical cohorts. WAPE = GMV-weighted accuracy.</span></div>' +
+      '<div id="ap-video-backtest"></div>' +
+
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Top Videos</span>' +
         '<span class="section-meta">Highest-grossing videos this week · 10 per page</span></div>' +
       '<div id="ap-video-leaderboard"></div>' +
@@ -612,7 +616,8 @@
           '<dt>Age Cohorts</dt><dd>Distribution of weekly GMV across new (0–7d), recent (8–30d), legacy (31–90d), long-tail (90+d).</dd>' +
           '<dt>Bell Curve</dt><dd>Mean % of lifetime GMV earned at each week of a winning video\'s life. Peak at week 1 (~24% of lifetime); 68% of lifetime earned by day 30. Use the SKU dropdown to compare B12 vs D3K2 vs Wellness — different families have different lifecycle shapes.</dd>' +
           '<dt>Forward GMV Forecast</dt><dd>Projects this week\'s new-content earnings forward 12 weeks using the bell curve. Takes the actual week-0 GMV and extrapolates by the typical-winner template.</dd>' +
-          '<dt>Inventory Forecast</dt><dd>Per-SKU Days-of-Supply: current TikTok on-hand ÷ this week\'s units/day. Color-coded against a 60-day lead time (red = urgent, yellow = watch, green = ≥120 days). 3PL column adds any in-transit supplier transfers; POs in pipeline are not yet included (conservative read).</dd>' +
+          '<dt>Inventory Forecast</dt><dd>Per-SKU 4-layer stock view (on-hand · in-transit · POs in pipeline · total) joined with this week\'s units/day. DOS columns show Days of Supply at each layer. Reorder signal uses DOS with POs included; near-term flag fires when on-hand alone covers < 14 days (risk if POs slip). Color thresholds: red < 60d, yellow 60–120d, green ≥ 120d.</dd>' +
+          '<dt>Forecast Accuracy</dt><dd>Validates the bell-curve forecast against history. For each historical cohort (videos posted in a given week), we predict its GMV at +1/+2/+4/+8 weeks using only its wk-0 GMV × bell curve, then compare to actuals. MAPE = mean abs % error (per-cohort), Median = median APE (outlier-robust), <strong>WAPE = GMV-weighted error (business view — this is the one to trust)</strong>, Bias = signed error (positive = over-prediction).</dd>' +
         '</dl></div>';
 
     renderVideoHighlights(document.getElementById('ap-video-highlights'));
@@ -622,6 +627,7 @@
     renderBellCurve(document.getElementById('ap-video-bellcurve'));
     renderGMVForecast(document.getElementById('ap-video-forecast'));
     renderInventoryForecast(document.getElementById('ap-video-inventory-forecast'));
+    renderForecastBacktest(document.getElementById('ap-video-backtest'));
     renderVideoLeaderboard(document.getElementById('ap-video-leaderboard'));
     renderNewLegacyDeclining(document.getElementById('ap-video-newlegacy'));
   }
@@ -1149,8 +1155,9 @@
     var nUrgent = skus.filter(function (s) { return s.reorder_signal === 'urgent'; }).length;
     var nWatch = skus.filter(function (s) { return s.reorder_signal === 'watch'; }).length;
     var nOk = skus.filter(function (s) { return s.reorder_signal === 'ok'; }).length;
+    var nNearTerm = skus.filter(function (s) { return s.near_term_risk; }).length;
 
-    var signalChip = function (sig) {
+    var signalChip = function (sig, nearTerm) {
       var styles = {
         urgent: 'background:#FFE5E5;color:#A50000;border:1px solid #FFB3B3',
         watch:  'background:#FFF4E5;color:#A56000;border:1px solid #FFD9A8',
@@ -1158,7 +1165,11 @@
         unknown:'background:#F0F0F0;color:#666;border:1px solid #DDD',
       };
       var labels = { urgent: 'Reorder now', watch: 'Watch', ok: 'Comfortable', unknown: 'No data' };
-      return '<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;' + (styles[sig] || styles.unknown) + '">' + (labels[sig] || sig) + '</span>';
+      var chip = '<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;' + (styles[sig] || styles.unknown) + '">' + (labels[sig] || sig) + '</span>';
+      if (nearTerm) {
+        chip += ' <span title="On-hand alone covers <14 days — at risk if POs slip" style="margin-left:4px;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;background:#FFEBEE;color:#A50000;border:1px solid #FFCDD2">⚠ near-term</span>';
+      }
+      return chip;
     };
 
     var dosColor = function (dos) {
@@ -1172,46 +1183,53 @@
     var summaryHtml =
       '<div class="kpi-grid" style="margin-bottom:18px">' +
         kpiCard('Reorder Now', String(nUrgent),
-          'SKUs with DOS < ' + F.lead_time_days + ' days (lead time)',
+          'DOS w/ POs in pipeline < ' + F.lead_time_days + 'd lead time',
           nUrgent > 0 ? 'red' : 'gray') +
+        kpiCard('Near-Term Risk', String(nNearTerm),
+          'On-hand alone covers < 14 days · risk if POs slip',
+          nNearTerm > 0 ? 'red' : 'gray') +
         kpiCard('Watch', String(nWatch),
-          'DOS between ' + F.thresholds.yellow_dos + '–' + F.thresholds.green_dos + ' days',
+          'DOS w/ pipeline between ' + F.thresholds.yellow_dos + '–' + F.thresholds.green_dos + ' days',
           nWatch > 0 ? 'yellow' : 'gray') +
         kpiCard('Comfortable', String(nOk),
-          'DOS ≥ ' + F.thresholds.green_dos + ' days', 'green') +
-        kpiCard('Lead Time', F.lead_time_days + ' days',
-          'Assumed reorder + ship time', 'gray') +
+          'DOS w/ pipeline ≥ ' + F.thresholds.green_dos + ' days', 'green') +
       '</div>';
 
-    // Table
+    // Table — 4-layer stock view: OH · in-transit · POs in pipeline · total,
+    // plus 3-layer DOS: OH only · OH+in-transit · OH+in-transit+POs.
     var rowsHtml = skus.map(function (s) {
       return '<tr>' +
         '<td style="font-weight:600">' + s.label + '</td>' +
-        '<td style="text-align:right">' + s.stock_oh.toLocaleString() + '</td>' +
-        '<td style="text-align:right;color:#666">' + s.stock_3pl.toLocaleString() + '</td>' +
-        '<td style="text-align:right">$' + Math.round(s.gmv_week).toLocaleString() + '</td>' +
+        '<td style="text-align:right;font-weight:700">' + s.stock_oh.toLocaleString() + '</td>' +
+        '<td style="text-align:right;color:#666">' + s.stock_intransit.toLocaleString() + '</td>' +
+        '<td style="text-align:right;color:#666">' + s.stock_pos_pipeline.toLocaleString() + '</td>' +
+        '<td style="text-align:right;font-weight:600">' + s.stock_total.toLocaleString() + '</td>' +
         '<td style="text-align:right">' + Math.round(s.units_week).toLocaleString() + '</td>' +
         '<td style="text-align:right;color:#666">$' + s.avg_unit_price.toFixed(2) + '</td>' +
-        '<td style="text-align:right;font-weight:700;color:' + dosColor(s.dos_current) + '">' +
-          (s.dos_current != null ? Math.round(s.dos_current) + 'd' : '—') + '</td>' +
-        '<td style="text-align:right;color:' + dosColor(s.dos_with_3pl) + '">' +
-          (s.dos_with_3pl != null ? Math.round(s.dos_with_3pl) + 'd' : '—') + '</td>' +
-        '<td>' + signalChip(s.reorder_signal) + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:' + dosColor(s.dos_oh) + '">' +
+          (s.dos_oh != null ? Math.round(s.dos_oh) + 'd' : '—') + '</td>' +
+        '<td style="text-align:right;color:' + dosColor(s.dos_intransit) + '">' +
+          (s.dos_intransit != null ? Math.round(s.dos_intransit) + 'd' : '—') + '</td>' +
+        '<td style="text-align:right;color:' + dosColor(s.dos_pipeline) + '">' +
+          (s.dos_pipeline != null ? Math.round(s.dos_pipeline) + 'd' : '—') + '</td>' +
+        '<td>' + signalChip(s.reorder_signal, s.near_term_risk) + '</td>' +
       '</tr>';
     }).join('');
 
     var tableHtml =
-      '<div class="card" style="margin-bottom:0;padding:0;overflow:hidden">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<div class="card" style="margin-bottom:0;padding:0;overflow:auto">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:1100px">' +
           '<thead><tr style="background:#FAFAFA;border-bottom:1px solid #E0E0E0;text-align:left">' +
             '<th style="padding:10px 14px">SKU</th>' +
-            '<th style="padding:10px 14px;text-align:right">On-Hand</th>' +
-            '<th style="padding:10px 14px;text-align:right">In-Transit / 3PL</th>' +
-            '<th style="padding:10px 14px;text-align:right">GMV / Week</th>' +
-            '<th style="padding:10px 14px;text-align:right">Units / Week</th>' +
-            '<th style="padding:10px 14px;text-align:right">AUP</th>' +
-            '<th style="padding:10px 14px;text-align:right">DOS</th>' +
-            '<th style="padding:10px 14px;text-align:right">DOS + 3PL</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="TikTok on-hand">On-Hand</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="3PL/supplier transfers en route">In-Transit</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Purchase orders not yet shipped">POs Pipeline</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="OH + In-Transit + POs">Total Stock</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Avg units sold per week (this week)">Units / Week</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Avg unit price (lifetime GMV ÷ units)">AUP</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Days of supply from on-hand alone">DOS · OH</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="DOS adding in-transit">+ In-Tr</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="DOS adding POs in pipeline">+ POs</th>' +
             '<th style="padding:10px 14px">Signal</th>' +
           '</tr></thead>' +
           '<tbody>' + rowsHtml + '</tbody>' +
@@ -1223,7 +1241,8 @@
       '<div style="margin-top:10px;font-size:11px;color:#888">' +
         'Inventory snapshot: <code>' + (F.inventory_snapshot || '—') + '</code> · ' +
         'Run-rate from this week\'s SKU GMV (subscription dashboard) · ' +
-        'POs in pipeline not yet counted (conservative read) · ' +
+        '4-layer stock from "Tiktok Inventory Updates" tab · ' +
+        'Lead time assumed flat ' + F.lead_time_days + 'd · ' +
         'Generated ' + (F.generated_at || '—') +
       '</div>';
 
@@ -1236,6 +1255,180 @@
       '#ap-video-inventory-forecast tbody tr:hover { background: #FAFAFA; }' +
       '#ap-video-inventory-forecast tbody td { padding: 10px 14px; }';
     host.appendChild(style);
+  }
+
+  /* Forecast Backtest — predicted vs actual across all historical cohorts.
+     Renders:
+       - 4 horizon KPI cards (1w / 2w / 4w / 8w) showing WAPE %
+       - Overall accuracy table (MAPE / Median / WAPE / Bias)
+       - Per-SKU accuracy table
+       - Predicted vs Actual bar chart for the last 12 cohorts (at horizon +4w)
+  */
+  function renderForecastBacktest(host) {
+    if (!host) return;
+    var B = window.FORECAST_BACKTEST;
+    if (!B || !Array.isArray(B.by_horizon) || !B.by_horizon.length) {
+      host.innerHTML = '<div class="info-notice">Forecast backtest data not loaded. Re-run <code>python -m pipeline.parsers.forecast_backtest</code> to regenerate <code>data/forecast-backtest.js</code>.</div>';
+      return;
+    }
+
+    // Color helper based on WAPE % (lower = better).
+    var wapeColor = function (w) {
+      if (w == null) return 'gray';
+      if (w < 30) return 'green';
+      if (w < 60) return 'yellow';
+      return 'red';
+    };
+
+    // Headline KPIs — show WAPE per horizon
+    var kpisHtml = B.by_horizon.map(function (h) {
+      return kpiCard(
+        '+' + h.horizon + ' Week WAPE',
+        h.wape_pct != null ? h.wape_pct.toFixed(1) + '%' : '—',
+        'n=' + h.n_cohorts + ' cohorts · bias ' + (h.mean_signed_err_pct >= 0 ? '+' : '') + (h.mean_signed_err_pct != null ? h.mean_signed_err_pct.toFixed(1) + '%' : '—'),
+        wapeColor(h.wape_pct)
+      );
+    }).join('');
+
+    // Overall by-horizon table
+    var horizonRows = B.by_horizon.map(function (h) {
+      var fmt = function (v, suffix) { return v != null ? v.toFixed(1) + (suffix || '%') : '—'; };
+      var fmtSigned = function (v) { return v != null ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—'; };
+      return '<tr>' +
+        '<td style="font-weight:600">Week +' + h.horizon + '</td>' +
+        '<td style="text-align:right">' + h.n_cohorts + '</td>' +
+        '<td style="text-align:right">' + fmt(h.mean_abs_err_pct) + '</td>' +
+        '<td style="text-align:right">' + fmt(h.median_abs_err_pct) + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:' + (wapeColor(h.wape_pct) === 'red' ? '#C72A1C' : wapeColor(h.wape_pct) === 'yellow' ? '#A56000' : '#2E7D32') + '">' + fmt(h.wape_pct) + '</td>' +
+        '<td style="text-align:right;color:' + (h.mean_signed_err_pct > 20 ? '#C72A1C' : h.mean_signed_err_pct < -20 ? '#A56000' : '#666') + '">' + fmtSigned(h.mean_signed_err_pct) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var horizonTableHtml =
+      '<div class="card" style="margin-bottom:0;padding:0;overflow:hidden">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:#FAFAFA;border-bottom:1px solid #E0E0E0;text-align:left">' +
+            '<th style="padding:10px 14px">Horizon</th>' +
+            '<th style="padding:10px 14px;text-align:right">n cohorts</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Mean abs % error per cohort — sensitive to small cohorts">MAPE</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Median abs % error — outlier-robust">Median</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="GMV-weighted abs % error — business view">WAPE</th>' +
+            '<th style="padding:10px 14px;text-align:right" title="Mean signed % error — positive = over-prediction">Bias</th>' +
+          '</tr></thead>' +
+          '<tbody>' + horizonRows + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    // Per-SKU table (one row per SKU, columns for 1w/2w/4w/8w WAPE)
+    var skuRowsHtml = (B.by_sku || []).map(function (s) {
+      var byH = {};
+      s.by_horizon.forEach(function (h) { byH[h.horizon] = h; });
+      var fmtW = function (h) {
+        var v = byH[h] && byH[h].wape_pct;
+        if (v == null) return '<span style="color:#999">—</span>';
+        var color = wapeColor(v) === 'red' ? '#C72A1C' : wapeColor(v) === 'yellow' ? '#A56000' : '#2E7D32';
+        return '<span style="color:' + color + ';font-weight:600">' + v.toFixed(0) + '%</span>';
+      };
+      return '<tr>' +
+        '<td style="font-weight:600">' + s.label + '</td>' +
+        '<td style="text-align:right;color:#666">' + s.n_cohorts + '</td>' +
+        '<td style="text-align:right">' + fmtW(1) + '</td>' +
+        '<td style="text-align:right">' + fmtW(2) + '</td>' +
+        '<td style="text-align:right">' + fmtW(4) + '</td>' +
+        '<td style="text-align:right">' + fmtW(8) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var skuTableHtml =
+      '<div class="card" style="margin-bottom:0;padding:0;overflow:hidden;margin-top:18px">' +
+        '<div style="padding:10px 14px;background:#FAFAFA;border-bottom:1px solid #E0E0E0;font-weight:600;font-size:13px">Accuracy by SKU (WAPE %)</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:#FAFAFA;border-bottom:1px solid #E0E0E0;text-align:left">' +
+            '<th style="padding:10px 14px">SKU</th>' +
+            '<th style="padding:10px 14px;text-align:right">n cohorts</th>' +
+            '<th style="padding:10px 14px;text-align:right">+1w</th>' +
+            '<th style="padding:10px 14px;text-align:right">+2w</th>' +
+            '<th style="padding:10px 14px;text-align:right">+4w</th>' +
+            '<th style="padding:10px 14px;text-align:right">+8w</th>' +
+          '</tr></thead>' +
+          '<tbody>' + skuRowsHtml + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    // Predicted vs actual chart for recent cohorts (horizon +4w)
+    var chartHtml =
+      '<div class="card" style="margin-top:18px;padding:18px 22px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:10px">Last 12 cohorts — Predicted vs Actual GMV at +4 weeks</div>' +
+        '<div class="chart-wrap" style="height:300px"><canvas id="ap-backtest-canvas"></canvas></div>' +
+      '</div>';
+
+    // Caveat box
+    var caveatHtml =
+      '<div style="margin-top:14px;padding:12px 16px;background:#FFF8E1;border-left:4px solid #FFB300;font-size:12px;color:#5D4500;line-height:1.5">' +
+        '<strong>Interpretation:</strong> The bell curve is calibrated on <em>mature winners only</em> (lifetime ≥ $100, ≥10 weeks observed). When applied to fresh cohorts that include both winners and non-winners, it over-predicts at near-term horizons (high positive bias at +1/+2 weeks). ' +
+        'Use WAPE as the headline accuracy — it weights by actual GMV so noisy small cohorts don\'t blow up the number. ' +
+        'B12 (1-Pack) has the most stable curve (largest sample); Wellness Bundle is most error-prone (n=15 winners).' +
+      '</div>';
+
+    host.innerHTML =
+      '<div class="kpi-grid" style="margin-bottom:14px">' + kpisHtml + '</div>' +
+      horizonTableHtml +
+      skuTableHtml +
+      chartHtml +
+      caveatHtml;
+
+    // Draw the predicted-vs-actual bar chart.
+    setTimeout(function () {
+      var canvas = document.getElementById('ap-backtest-canvas');
+      if (!canvas || typeof Chart === 'undefined') return;
+      var detail = (B.cohort_detail || []).slice().reverse(); // oldest → newest left-to-right
+      // Only include cohorts where +4w actual is available (i.e. cohort is old enough).
+      var rows = detail.filter(function (d) { return (d.actual && d.actual['4'] > 0); });
+      var labels = rows.map(function (d) {
+        return (d.cohort_week_end || '').slice(5, 10) + ' · ' + d.family;
+      });
+      var predicted = rows.map(function (d) { return d.predicted['4'] || 0; });
+      var actual = rows.map(function (d) { return d.actual['4'] || 0; });
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Predicted (+4w)', data: predicted, backgroundColor: '#FF6B00', borderRadius: 4 },
+            { label: 'Actual (+4w)', data: actual, backgroundColor: '#4C9C2E', borderRadius: 4 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var d = rows[ctx.dataIndex];
+                  var v = ctx.parsed.y;
+                  var err = ((d.predicted['4'] - d.actual['4']) / d.actual['4'] * 100);
+                  if (ctx.dataset.label.indexOf('Predicted') !== -1) {
+                    return ctx.dataset.label + ': $' + Math.round(v).toLocaleString() + ' (err: ' + (err >= 0 ? '+' : '') + err.toFixed(0) + '%)';
+                  }
+                  return ctx.dataset.label + ': $' + Math.round(v).toLocaleString();
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: function (v) { return '$' + (v/1000).toFixed(1) + 'K'; } },
+              title: { display: true, text: 'GMV at +4 weeks ($)', font: { size: 11 } }
+            },
+            x: {
+              ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } }
+            }
+          }
+        }
+      });
+    }, 50);
   }
 
   function renderNewLegacyDeclining(host) {
