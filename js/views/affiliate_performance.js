@@ -587,6 +587,10 @@
         '<span class="section-meta">Projected contribution from videos posted in the last 7 days, using the bell curve as the per-video template.</span></div>' +
       '<div id="ap-video-forecast"></div>' +
 
+      '<div class="section-header" style="margin-top:32px"><span class="section-title">Inventory Forecast — Days of Supply by SKU</span>' +
+        '<span class="section-meta">GMV → units → DOS. Joins weekly run-rate × current on-hand × lead time (60d). Red = reorder now, yellow = watch, green = comfortable.</span></div>' +
+      '<div id="ap-video-inventory-forecast"></div>' +
+
       '<div class="section-header" style="margin-top:32px"><span class="section-title">Top Videos</span>' +
         '<span class="section-meta">Highest-grossing videos this week · 10 per page</span></div>' +
       '<div id="ap-video-leaderboard"></div>' +
@@ -608,6 +612,7 @@
           '<dt>Age Cohorts</dt><dd>Distribution of weekly GMV across new (0–7d), recent (8–30d), legacy (31–90d), long-tail (90+d).</dd>' +
           '<dt>Bell Curve</dt><dd>Mean % of lifetime GMV earned at each week of a winning video\'s life. Peak at week 1 (~24% of lifetime); 68% of lifetime earned by day 30. Use the SKU dropdown to compare B12 vs D3K2 vs Wellness — different families have different lifecycle shapes.</dd>' +
           '<dt>Forward GMV Forecast</dt><dd>Projects this week\'s new-content earnings forward 12 weeks using the bell curve. Takes the actual week-0 GMV and extrapolates by the typical-winner template.</dd>' +
+          '<dt>Inventory Forecast</dt><dd>Per-SKU Days-of-Supply: current TikTok on-hand ÷ this week\'s units/day. Color-coded against a 60-day lead time (red = urgent, yellow = watch, green = ≥120 days). 3PL column adds any in-transit supplier transfers; POs in pipeline are not yet included (conservative read).</dd>' +
         '</dl></div>';
 
     renderVideoHighlights(document.getElementById('ap-video-highlights'));
@@ -616,6 +621,7 @@
     renderAgeCohorts(document.getElementById('ap-video-cohorts'));
     renderBellCurve(document.getElementById('ap-video-bellcurve'));
     renderGMVForecast(document.getElementById('ap-video-forecast'));
+    renderInventoryForecast(document.getElementById('ap-video-inventory-forecast'));
     renderVideoLeaderboard(document.getElementById('ap-video-leaderboard'));
     renderNewLegacyDeclining(document.getElementById('ap-video-newlegacy'));
   }
@@ -1120,6 +1126,116 @@
         }
       });
     }, 50);
+  }
+
+  /* Inventory Forecast — per-SKU Days-of-Supply table.
+     Reads window.SKU_FORECAST (joined sku-videos × inventory × bell curves).
+
+     Layout:
+       - Summary strip: # urgent / # watch / # ok across all 6 SKUs
+       - Table: SKU · stock · 3PL · GMV/wk · units/wk · AUP · DOS · DOS+3PL · signal
+       - Color-coded rows by reorder_signal
+       - Footnote: data freshness + lead-time assumption
+  */
+  function renderInventoryForecast(host) {
+    if (!host) return;
+    var F = window.SKU_FORECAST;
+    if (!F || !Array.isArray(F.skus) || !F.skus.length) {
+      host.innerHTML = '<div class="info-notice">Inventory forecast data not loaded. Re-run <code>python -m pipeline.parsers.sku_forecast</code> to regenerate <code>data/sku-forecast.js</code>.</div>';
+      return;
+    }
+
+    var skus = F.skus;
+    var nUrgent = skus.filter(function (s) { return s.reorder_signal === 'urgent'; }).length;
+    var nWatch = skus.filter(function (s) { return s.reorder_signal === 'watch'; }).length;
+    var nOk = skus.filter(function (s) { return s.reorder_signal === 'ok'; }).length;
+
+    var signalChip = function (sig) {
+      var styles = {
+        urgent: 'background:#FFE5E5;color:#A50000;border:1px solid #FFB3B3',
+        watch:  'background:#FFF4E5;color:#A56000;border:1px solid #FFD9A8',
+        ok:     'background:#E8F5E9;color:#2E7D32;border:1px solid #B5DCB7',
+        unknown:'background:#F0F0F0;color:#666;border:1px solid #DDD',
+      };
+      var labels = { urgent: 'Reorder now', watch: 'Watch', ok: 'Comfortable', unknown: 'No data' };
+      return '<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;' + (styles[sig] || styles.unknown) + '">' + (labels[sig] || sig) + '</span>';
+    };
+
+    var dosColor = function (dos) {
+      if (dos == null) return '#999';
+      if (dos < F.thresholds.yellow_dos) return '#C72A1C';
+      if (dos < F.thresholds.green_dos) return '#A56000';
+      return '#2E7D32';
+    };
+
+    // Summary strip
+    var summaryHtml =
+      '<div class="kpi-grid" style="margin-bottom:18px">' +
+        kpiCard('Reorder Now', String(nUrgent),
+          'SKUs with DOS < ' + F.lead_time_days + ' days (lead time)',
+          nUrgent > 0 ? 'red' : 'gray') +
+        kpiCard('Watch', String(nWatch),
+          'DOS between ' + F.thresholds.yellow_dos + '–' + F.thresholds.green_dos + ' days',
+          nWatch > 0 ? 'yellow' : 'gray') +
+        kpiCard('Comfortable', String(nOk),
+          'DOS ≥ ' + F.thresholds.green_dos + ' days', 'green') +
+        kpiCard('Lead Time', F.lead_time_days + ' days',
+          'Assumed reorder + ship time', 'gray') +
+      '</div>';
+
+    // Table
+    var rowsHtml = skus.map(function (s) {
+      return '<tr>' +
+        '<td style="font-weight:600">' + s.label + '</td>' +
+        '<td style="text-align:right">' + s.stock_oh.toLocaleString() + '</td>' +
+        '<td style="text-align:right;color:#666">' + s.stock_3pl.toLocaleString() + '</td>' +
+        '<td style="text-align:right">$' + Math.round(s.gmv_week).toLocaleString() + '</td>' +
+        '<td style="text-align:right">' + Math.round(s.units_week).toLocaleString() + '</td>' +
+        '<td style="text-align:right;color:#666">$' + s.avg_unit_price.toFixed(2) + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:' + dosColor(s.dos_current) + '">' +
+          (s.dos_current != null ? Math.round(s.dos_current) + 'd' : '—') + '</td>' +
+        '<td style="text-align:right;color:' + dosColor(s.dos_with_3pl) + '">' +
+          (s.dos_with_3pl != null ? Math.round(s.dos_with_3pl) + 'd' : '—') + '</td>' +
+        '<td>' + signalChip(s.reorder_signal) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var tableHtml =
+      '<div class="card" style="margin-bottom:0;padding:0;overflow:hidden">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:#FAFAFA;border-bottom:1px solid #E0E0E0;text-align:left">' +
+            '<th style="padding:10px 14px">SKU</th>' +
+            '<th style="padding:10px 14px;text-align:right">On-Hand</th>' +
+            '<th style="padding:10px 14px;text-align:right">In-Transit / 3PL</th>' +
+            '<th style="padding:10px 14px;text-align:right">GMV / Week</th>' +
+            '<th style="padding:10px 14px;text-align:right">Units / Week</th>' +
+            '<th style="padding:10px 14px;text-align:right">AUP</th>' +
+            '<th style="padding:10px 14px;text-align:right">DOS</th>' +
+            '<th style="padding:10px 14px;text-align:right">DOS + 3PL</th>' +
+            '<th style="padding:10px 14px">Signal</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    // Footnote with data lineage
+    var footnote =
+      '<div style="margin-top:10px;font-size:11px;color:#888">' +
+        'Inventory snapshot: <code>' + (F.inventory_snapshot || '—') + '</code> · ' +
+        'Run-rate from this week\'s SKU GMV (subscription dashboard) · ' +
+        'POs in pipeline not yet counted (conservative read) · ' +
+        'Generated ' + (F.generated_at || '—') +
+      '</div>';
+
+    host.innerHTML = summaryHtml + tableHtml + footnote;
+
+    // Inject a row-style hook so red rows get a subtle red tint.
+    var style = document.createElement('style');
+    style.textContent =
+      '#ap-video-inventory-forecast tbody tr { border-bottom: 1px solid #F0F0F0; }' +
+      '#ap-video-inventory-forecast tbody tr:hover { background: #FAFAFA; }' +
+      '#ap-video-inventory-forecast tbody td { padding: 10px 14px; }';
+    host.appendChild(style);
   }
 
   function renderNewLegacyDeclining(host) {
